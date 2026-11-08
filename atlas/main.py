@@ -14,6 +14,12 @@ import time
 from . import cerebro, config, voz
 from .memoria import Memoria
 
+# O console do Windows abre em cp1252 e explode num acento qualquer
+# (UnicodeEncodeError) antes mesmo de a resposta aparecer.
+for _fluxo in (sys.stdout, sys.stderr):
+    if hasattr(_fluxo, "reconfigure"):
+        _fluxo.reconfigure(encoding="utf-8", errors="replace")
+
 SAUDACAO = "Oi. Estou aqui."
 ENCERRAR = {"tchau", "ate logo", "pode dormir", "desliga", "sair", "fim"}
 

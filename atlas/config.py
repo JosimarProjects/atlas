@@ -21,8 +21,14 @@ for _d in (MODELOS, VOZES, DADOS, LOGS):
 # ---------------------------------------------------------------- cerebro
 LLM_URL = os.environ.get("ATLAS_LLM_URL", "http://127.0.0.1:8080/v1")
 LLM_MODELO = "atlas"
-LLM_TEMPERATURA = 0.6
-LLM_MAX_TOKENS = 700
+# 0.2 medido. Acima disso este 9B comeca a misturar espanhol no portugues
+# ("un modelo", "la complexidade") e a inventar palavras.
+LLM_TEMPERATURA = 0.2
+# O Qwen3.5 raciocina antes de responder, e esse raciocinio consome o mesmo
+# orcamento. Com 700 ele gastava tudo pensando e devolvia conteudo vazio.
+# Nao desligue o pensamento: sem ele o modelo para de chamar ferramentas e
+# passa a "simular" o que faria.
+LLM_MAX_TOKENS = 2000
 
 # ---------------------------------------------------------------- ouvido
 # faster-whisper. "small" ja entende portugues bem e cabe na CPU sem roubar
@@ -53,14 +59,10 @@ MEMORIA_RESUMO_MAX = 1200       # caracteres do resumo acumulado
 NOME = "Atlas"
 DONO = os.environ.get("ATLAS_DONO", "Josimar")
 
-PROMPT_SISTEMA = f"""Voce e a {NOME}, a assistente pessoal do {DONO}, rodando \
-localmente no computador dele. Sem internet e sem mensalidade.
-
-Como voce fala:
-- Portugues do Brasil, direto e natural, como quem conversa em voz alta.
-- Respostas curtas: duas ou tres frases, a nao ser que peçam detalhe.
-- Sua resposta vira audio. Nada de markdown, bullet, emoji ou code block.
-- Numeros e horas por extenso quando ficar mais natural de ouvir.
-
-Voce tem ferramentas de verdade (lembretes, clima, anotacoes, hora). Use-as em \
-vez de inventar. Se nao souber, diga que nao sabe."""
+# Prompt curto de proposito. Com uma lista longa de regras de estilo -- ainda
+# mais regras negativas ("nada de markdown, bullet, emoji") -- este 9B passa a
+# repetir o proprio prompt em loop dentro dos argumentos da ferramenta, ate
+# estourar o JSON e derrubar a requisicao. Duas frases funcionam; dez nao.
+PROMPT_SISTEMA = f"""Voce e a {NOME}, assistente de voz do {DONO}, rodando no \
+computador dele. Responda em portugues do Brasil, em texto corrido curto, com \
+no maximo tres frases. Use as ferramentas disponiveis para obter dados reais."""

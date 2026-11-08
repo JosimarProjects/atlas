@@ -110,20 +110,23 @@ class Memoria:
 
     # ----------------------------------------------------------- contexto
     def contexto(self) -> list[dict[str, Any]]:
-        """Mensagens prontas para mandar ao modelo: sistema + resumo + janela."""
-        msgs: list[dict[str, Any]] = [
-            {"role": "system", "content": config.PROMPT_SISTEMA}
-        ]
+        """Mensagens prontas para mandar ao modelo: sistema + resumo + janela.
+
+        O template do Qwen3.5 aceita UMA unica mensagem de sistema e rejeita o
+        resto com "System message must be at the beginning" -- por isso prompt,
+        data e resumo vao concatenados num bloco so.
+        """
         agora = datetime.now()
-        msgs.append({
-            "role": "system",
-            "content": f"Agora sao {agora:%H:%M} de {agora:%d/%m/%Y} ({_dia_semana(agora)}).",
-        })
+        partes = [
+            config.PROMPT_SISTEMA,
+            f"Agora sao {agora:%H:%M} de {agora:%d/%m/%Y} ({_dia_semana(agora)}).",
+        ]
         if self.resumo:
-            msgs.append({
-                "role": "system",
-                "content": f"O que ja foi conversado antes:\n{self.resumo}",
-            })
+            partes.append(f"O que ja foi conversado antes:\n{self.resumo}")
+
+        msgs: list[dict[str, Any]] = [
+            {"role": "system", "content": "\n\n".join(partes)}
+        ]
         msgs.extend(self.janela())
         return msgs
 

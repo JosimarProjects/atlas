@@ -159,6 +159,60 @@ Tudo em [`atlas/config.py`](atlas/config.py), ou por variável de ambiente:
 
 ---
 
+## Armadilhas do Qwen3.5-9B (medidas, não supostas)
+
+Cinco coisas quebraram antes de funcionar. Todas estão corrigidas no código — ficam aqui porque nenhuma é óbvia e todas custam horas.
+
+**1. KV cache quantizado corrompe a saída no Vulkan**
+
+Com `--cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on`, respostas curtas saíam perfeitas e as longas viravam lixo: *"Veo criar um lembreço"*, *"Mondassigo as 9h"*, chinês vazando no meio do português. Tirar as duas flags resolveu. Vale a VRAM extra.
+
+**2. Uma única mensagem de sistema, sempre no começo**
+
+O template levanta `System message must be at the beginning` se houver qualquer `system` depois da primeira mensagem. Prompt, data/hora e resumo da memória vão **concatenados num bloco só** — e o resultado das ferramentas também.
+
+**3. O raciocínio consome o mesmo orçamento de tokens**
+
+Com `max_tokens: 700` o modelo gastava tudo pensando e devolvia `content` vazio. **2000 é o mínimo utilizável.**
+
+**4. Não desligue o raciocínio**
+
+Parece a otimização óbvia para voz — é a pior. Com `enable_thinking: false` ou `--reasoning-budget 0`, o modelo **para de chamar ferramentas** e passa a narrar o que faria: *"Vou simular o que faria: usaria criar_lembrete com..."*.
+
+**5. Temperatura acima de 0,2 mistura espanhol**
+
+Medido no mesmo prompt:
+
+| Temp | Saída |
+|---|---|
+| **0,2** | *"É um processo onde os pesos... são convertidos para inteiros."* ✅ |
+| 0,4 | *"...o que apela espaço... comprimir **un** mapa"* |
+| 0,6 | prolixo, repetitivo |
+
+**Bônus — prompt de sistema curto.** A primeira versão tinha cinco regras de estilo em bullets, incluindo *"nada de markdown, bullet, emoji"*. O modelo passou a **repetir o próprio prompt em loop** dentro dos argumentos da ferramenta, até estourar o JSON e derrubar a requisição com HTTP 500. Duas frases funcionam; dez não.
+
+## Por que não usamos tool calling nativo
+
+O Qwen3.5 emite tool calls num formato XML-ish próprio e o parser do llama.cpp `b12211` ainda não dá conta — ou vaza o fechamento da tag para dentro do valor (`"Teste a Atlas às 9h</ texto"` foi parar no banco), ou gera JSON inválido e o servidor devolve 500.
+
+A solução foi tirar a decisão do caminho do parser: uma chamada curta e separada com `response_format: json_schema`, que o llama.cpp converte em gramática BNF e usa para **restringir a geração token a token**. A saída é JSON válido por construção, não por sorte.
+
+Custa uma chamada a mais por turno (~0,3s) e, em troca, não depende do parser amadurecer. Quando o suporte nativo estabilizar, dá para voltar atrás — está isolado em `_decidir()`.
+
+## Desempenho medido
+
+RX 7600 8 GB, Vulkan, Qwen3.5-9B Q4_K_M:
+
+| | |
+|---|---|
+| Geração | **41,6 tok/s** |
+| Prefill | 125 tok/s |
+| Carregar o modelo | 6,6 s |
+
+Geração é limitada por banda de memória: a cada token a GPU lê o modelo inteiro (6,2 GB). A RX 7600 tem 288 GB/s, o que dá um teto de ~46 tok/s — os 41,6 medidos são **90% do teórico**.
+
+> **Duas GPUs não ajudam.** Numa máquina com dedicada + integrada, dividir as camadas deixa **mais lento**: cada token atravessa todas as camadas em ordem, então os tempos somam em vez de paralelizar, e a integrada (que usa RAM do sistema, ~3× menos banda) vira gargalo serial. Dividir só compensa quando o modelo não cabe em uma placa — é solução de capacidade, não de velocidade.
+
 ## Problemas conhecidos
 
 **A GPU errada é escolhida.** Em máquinas com GPU dedicada + integrada, alguns runtimes pegam a integrada (lenta, usa RAM compartilhada). Confirme com `--list-devices` e fixe em `servidor.ps1` com `--device`.

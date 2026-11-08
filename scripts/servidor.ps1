@@ -25,8 +25,8 @@ $env:GGML_VK_VISIBLE_DEVICES = "0"
     --ctx-size $Ctx `
     --n-gpu-layers $Gpu `
     --device "Vulkan0" `
-    --flash-attn on `
-    --cache-type-k q8_0 --cache-type-v q8_0 `
     --jinja `
+    --reasoning-format deepseek `
+    --repeat-penalty 1.1 --repeat-last-n 256 `
     --parallel 2 `
     --metrics
