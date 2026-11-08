@@ -21,14 +21,19 @@ for _d in (MODELOS, VOZES, DADOS, LOGS):
 # ---------------------------------------------------------------- cerebro
 LLM_URL = os.environ.get("ATLAS_LLM_URL", "http://127.0.0.1:8080/v1")
 LLM_MODELO = "atlas"
-# 0.2 medido. Acima disso este 9B comeca a misturar espanhol no portugues
-# ("un modelo", "la complexidade") e a inventar palavras.
-LLM_TEMPERATURA = 0.2
+# 0.6 com top_p/top_k, que e o recomendado pelo Qwen para modo de
+# raciocinio. A mistura de espanhol que me levou a baixar para 0.2 era
+# sintoma do template quebrado, nao da temperatura -- e temperatura baixa
+# em modo de raciocinio causa loop infinito.
+LLM_TEMPERATURA = 0.6
+LLM_TOP_P = 0.95
+LLM_TOP_K = 20
 # O Qwen3.5 raciocina antes de responder, e esse raciocinio consome o mesmo
-# orcamento. Com 700 ele gastava tudo pensando e devolvia conteudo vazio.
-# Nao desligue o pensamento: sem ele o modelo para de chamar ferramentas e
-# passa a "simular" o que faria.
-LLM_MAX_TOKENS = 2000
+# orcamento: uma pergunta de conhecimento gasta ~950 tokens so pensando.
+# Com 2000 ainda havia resposta vazia; 4000 da folga. Nao desligue o
+# pensamento: sem ele o modelo para de chamar ferramentas e passa a
+# "simular" o que faria.
+LLM_MAX_TOKENS = 4000
 
 # ---------------------------------------------------------------- ouvido
 # faster-whisper. "small" ja entende portugues bem e cabe na CPU sem roubar

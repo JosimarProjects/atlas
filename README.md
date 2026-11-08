@@ -159,28 +159,40 @@ Tudo em [`atlas/config.py`](atlas/config.py), ou por variável de ambiente:
 
 ---
 
-## ⚠️ O backend Vulkan corrompe a inferência deste modelo
+## ⚠️ O chat template oficial do Qwen quebra o modelo
 
-A descoberta mais cara desta build. **O mesmo arquivo GGUF, a mesma pergunta, dois backends:**
+A descoberta mais cara do projeto, e eu diagnostiquei errado duas vezes antes de achar.
 
-| Backend | *"Quem foi Dom Pedro II do Brasil?"* |
-|---|---|
-| **Vulkan** (RX 7600) | *"um bispo católico conhecido por sua atuação na Segunda Guerra"* — e inventa palavras: *"bisbranos"*, *"Seminarsersa"* |
-| **CPU** (mesmo GGUF) | *"Imperador do Brasil, último monarca antes da República"* ✅ |
+O template que vem no GGUF **duplica as tags `<think>`** no histórico. O modelo então abre um `<think>` dentro do próprio `<think>`, reinicia o raciocínio em loop e nunca chega a responder. No caminho, inventa fatos e palavras.
 
-Não é a quantização e não é download corrompido — o arquivo bate byte a byte com o HuggingFace (`6169341984`). É o backend.
+**Sintomas, em ordem de gravidade:**
 
-**Como reconhecer:** respostas curtas saem perfeitas (*"A capital da França é Paris."*), e a degradação cresce com o comprimento da saída. Primeiro aparecem palavras inexistentes, depois o texto mistura idiomas, por fim o raciocínio entra em loop e nunca termina — você recebe `content` vazio com `finish_reason: length`.
+1. Palavras que não existem — *"bisbranos"*, *"Mondassigo"*, *"Seminarsersa"*
+2. Mistura de idiomas — espanhol no meio do português, às vezes mandarim
+3. Fatos inventados com confiança — *"Dom Pedro II foi um bispo católico conhecido por sua atuação na Segunda Guerra"*
+4. `content` vazio com `finish_reason: length` — todo o orçamento gasto pensando
 
-**Como diagnosticar na sua máquina:** suba o mesmo modelo numa segunda porta com `--n-gpu-layers 0` e compare. Se a CPU acerta e a GPU não, é isto.
+**O mesmo modelo, a mesma GPU, só trocando o template:**
+
+> *"Dom Pedro II foi o segundo imperador do Brasil e governou o país pacificamente por cinquenta e nove anos, de 1831 até sua deposição em 1889."* ✅
+
+**A correção:**
 
 ```bash
-engine/llama/llama-server.exe --model <modelo> --port 8081 --n-gpu-layers 0
+curl -L -o templates/qwen3.5-fixed.jinja   https://huggingface.co/sudiptosarkar/Qwen-Fixed-Chat-Templates/resolve/main/qwen3.5/chat_template.jinja
 ```
 
-**Solução:** use o build **ROCm** (`llama-*-bin-win-rocm-*.zip`), não o Vulkan, em placas AMD RDNA3.
+E suba com `--chat-template-file templates/qwen3.5-fixed.jinja`. O `servidor.ps1` já faz isso.
 
-> O reel que inspirou o projeto resolve isso por outro caminho: no Linux, o driver da comunidade expõe a placa via ROCm e o problema não aparece. No Windows o build ROCm oficial cobre o mesmo terreno.
+### Dois becos sem saída que isso me custou
+
+Registrados porque são exatamente o tipo de desvio que a falta de um teste controlado produz:
+
+**Culpei o backend Vulkan.** Comparei GPU contra CPU e a CPU acertava. Conclusão aparentemente óbvia — mas eu havia mudado **três variáveis ao mesmo tempo** (backend, contexto 16k→4k, e `--parallel 2`). O teste não isolava nada. Baixei 267 MB do build ROCm à toa; ele nem enumera a placa no driver Adrenalin consumidor (`--list-devices` devolve `(none)`).
+
+**Culpei a temperatura.** A 0,6 saía espanhol, a 0,2 saía português limpo — então baixei para 0,2. Era sintoma do template, e pior: temperatura baixa em modo de raciocínio **causa** loop infinito. O valor certo é o que o Qwen recomenda, `0.6` com `top_p 0.95` e `top_k 20`.
+
+> **A lição:** mude uma variável por vez. Duas correlações convincentes me levaram a duas conclusões erradas e a um download inútil.
 
 ## Armadilhas do Qwen3.5-9B (medidas, não supostas)
 

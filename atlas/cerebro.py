@@ -112,6 +112,8 @@ def _chamar(
         "model": config.LLM_MODELO,
         "messages": mensagens,
         "temperature": config.LLM_TEMPERATURA,
+        "top_p": config.LLM_TOP_P,
+        "top_k": config.LLM_TOP_K,
         "max_tokens": max_tokens or config.LLM_MAX_TOKENS,
     }
     if not pensar:
