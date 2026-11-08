@@ -1,0 +1,11 @@
+# Ouvido
+faster-whisper>=1.1.0
+sounddevice>=0.4.6
+numpy>=1.26
+# Silero VAD vem pelo torch.hub; CPU basta.
+torch>=2.2
+
+# Voz
+piper-tts>=1.2.0
+
+# O cerebro fala HTTP puro com o llama-server: sem SDK, sem dependencia extra.

@@ -1,0 +1,17 @@
+# Pesos e binarios: baixados pelos scripts, nunca versionados.
+models/
+voices/
+engine/
+data/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Windows
+Thumbs.db
+desktop.ini
