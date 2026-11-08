@@ -107,11 +107,12 @@ def _chamar(
     max_tokens: int | None = None,
     pensar: bool = True,
     schema: dict[str, Any] | None = None,
+    temperatura: float | None = None,
 ) -> str:
     corpo: dict[str, Any] = {
         "model": config.LLM_MODELO,
         "messages": mensagens,
-        "temperature": config.LLM_TEMPERATURA,
+        "temperature": config.LLM_TEMPERATURA if temperatura is None else temperatura,
         "top_p": config.LLM_TOP_P,
         "top_k": config.LLM_TOP_K,
         "max_tokens": max_tokens or config.LLM_MAX_TOKENS,
@@ -128,6 +129,21 @@ def _chamar(
 
 
 # ------------------------------------------------------------------ roteador
+# Pergunta curta que comeca por conectivo ou pronome nao se explica sozinha:
+# "e em Curitiba?", "e amanha?", "esse ai". So nesses casos vale arrastar a
+# conversa anterior para o roteador.
+_CONTINUACAO = re.compile(
+    r"^\s*(e|ou|entao|tambem|ai|la|ele|ela|isso|esse|essa|aquele|aquela|"
+    r"nele|nela|dele|dela|o mesmo|a mesma)\b",
+    re.IGNORECASE,
+)
+
+
+def _parece_continuacao(pergunta: str) -> bool:
+    p = pergunta.strip()
+    return bool(_CONTINUACAO.match(p)) or len(p.split()) <= 3
+
+
 def _schema_decisao() -> dict[str, Any]:
     nomes = [e["function"]["name"] for e in ferramentas.ESQUEMAS]
     return {
@@ -149,21 +165,45 @@ def _catalogo() -> str:
     return "\n".join(linhas)
 
 
-def _decidir(pergunta: str, memoria: Memoria) -> tuple[str, dict[str, Any]]:
+def _decidir(pergunta: str, memoria: Memoria,
+             observado: str = "") -> tuple[str, dict[str, Any]]:
     """Escolhe uma ferramenta (ou nenhuma). Saida garantida pela gramatica."""
+    # Instrucao curta DE PROPOSITO. Tentei acrescentar regras ("use a busca
+    # quando a resposta depender de fato do mundo", "nao use ferramenta para
+    # matematica") e a precisao CAIU: com as regras, "qual a temperatura
+    # hoje?" e "quem ganhou o Oscar 2026?" iam para 'nenhuma'; sem elas, as
+    # duas roteiam certo. O que funciona neste 9B e por em palavra-chave na
+    # descricao de cada ferramenta, nao em prosa na instrucao.
     instrucao = (
         "Escolha a ferramenta que responde a mensagem do usuario.\n"
         f"{_catalogo()}\n"
         "Se nenhuma for necessaria, responda com ferramenta igual a 'nenhuma'.\n"
         "Responda apenas o JSON."
     )
-    contexto = memoria.janela()[-2:]
-    msgs = [{"role": "system", "content": instrucao}, *contexto,
-            {"role": "user", "content": pergunta}]
+    # A janela anterior entra so quando a pergunta nao se sustenta sozinha
+    # ("e em Curitiba?"). Passar contexto sempre desviava o roteador: com uma
+    # conversa sobre Dom Pedro II na memoria, "qual a temperatura em Ribeirao
+    # Pires?" era roteada para 'nenhuma'.
+    msgs: list[dict[str, Any]] = [{"role": "system", "content": instrucao}]
+    if _parece_continuacao(pergunta):
+        msgs.extend(memoria.janela()[-2:])
+    conteudo = pergunta
+    if observado:
+        # Segunda volta: o modelo ve o que a ferramenta anterior trouxe e
+        # decide se precisa de mais uma (tipicamente abrir uma das paginas).
+        conteudo = (pergunta + "\n\nJa obtive isto:\n" + observado[:1500] +
+                    "\n\nFalta alguma ferramenta para responder? Se ja da para "
+                    "responder, escolha 'nenhuma'.")
+    msgs.append({"role": "user", "content": conteudo})
     try:
         # Sem raciocinio: a gramatica ja garante a forma, e pensar aqui so
         # gastaria tokens antes de um JSON de uma linha.
-        bruto = _chamar(msgs, max_tokens=300, pensar=False, schema=_schema_decisao())
+        # Temperatura baixa aqui, nao a 0.6 da conversa: escolher ferramenta e
+        # uma decisao, nao redacao, e com 0.6 o mesmo caso ora acertava ora
+        # nao. O alerta do Qwen sobre loop com temperatura baixa vale para o
+        # modo de raciocinio, que esta desligado neste passo.
+        bruto = _chamar(msgs, max_tokens=300, pensar=False,
+                        schema=_schema_decisao(), temperatura=0.1)
         d = json.loads(bruto)
         nome = d.get("ferramenta", "nenhuma")
         args = d.get("argumentos") or {}
@@ -176,17 +216,21 @@ def _decidir(pergunta: str, memoria: Memoria) -> tuple[str, dict[str, Any]]:
 def responder(pergunta: str, memoria: Memoria) -> str:
     memoria.registrar("user", pergunta)
 
+    # Encadear so vale depois de uma busca: "quais filmes estao em cartaz?"
+    # traz links para o Ingresso e o AdoroCinema, nunca a lista -- a resposta
+    # util exige abrir uma das paginas. As outras ferramentas ja devolvem o
+    # dado final, e uma volta extra so daria ao modelo mais chance de errar.
     observacoes: list[str] = []
-    pendente = pergunta
+    observado = ""
     for _ in range(MAX_VOLTAS_FERRAMENTA):
-        nome, args = _decidir(pendente, memoria)
+        nome, args = _decidir(pergunta, memoria, observado)
         if nome == "nenhuma":
             break
         resultado = ferramentas.executar(nome, args)
         observacoes.append(f"{nome} -> {resultado}")
-        # Uma ferramenta por turno cobre quase tudo; encadear mais so vale
-        # quando o resultado anterior abre uma pergunta nova.
-        break
+        if nome != "buscar_na_web":
+            break
+        observado = resultado
 
     mensagens = memoria.contexto()
     if observacoes:
@@ -207,7 +251,14 @@ def responder(pergunta: str, memoria: Memoria) -> str:
         # reescrita do modelo perdeu os numeros ou trocou de idioma, ela nao
         # vale: entregamos o dado cru, que e sempre verdadeiro.
         dados = observacoes[-1].split(" -> ", 1)[-1]
-        if not texto or _derivou_idioma(texto) or not _fiel_aos_dados(texto, dados):
+        # A trava dos numeros so vale para resultado curto e factual (clima,
+        # hora): ali todo numero importa. Texto de web traz dezenas de numeros
+        # incidentais -- exigir todos reprovava qualquer resumo e despejava a
+        # pagina crua na voz do usuario.
+        exigir_numeros = len(dados) < 400
+        reprovado = (not texto or _derivou_idioma(texto)
+                     or (exigir_numeros and not _fiel_aos_dados(texto, dados)))
+        if reprovado:
             memoria.registrar("assistant", dados)
             return dados
         memoria.registrar("assistant", texto)

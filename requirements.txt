@@ -9,3 +9,4 @@ torch>=2.2
 piper-tts>=1.2.0
 
 # O cerebro fala HTTP puro com o llama-server: sem SDK, sem dependencia extra.
+ddgs>=9.0
