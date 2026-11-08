@@ -10,15 +10,15 @@ que toca a internet; sem rede ela falha de forma explicita em vez de inventar.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+import os
+import urllib.parse
+from datetime import datetime
 from typing import Any, Callable
 
 from . import config
 from .memoria import conectar
 
-# Coordenadas padrao: Sao Paulo. Trocar se a Atlas mudar de cidade.
-LAT, LON = -23.5505, -46.6333
-CIDADE = "Sao Paulo"
+CIDADE_PADRAO = os.environ.get("ATLAS_CIDADE", "Ribeirao Pires")
 
 
 # ---------------------------------------------------------------- lembretes
@@ -90,12 +90,44 @@ def que_horas() -> str:
 
 
 # --------------------------------------------------------------------- clima
-def clima(dia: str = "hoje") -> str:
-    """Previsao via Open-Meteo. Unica ferramenta que depende de internet."""
+def _localizar(cidade: str) -> tuple[float, float, str] | None:
+    """Nome de cidade -> (lat, lon, nome oficial) pelo geocoder do Open-Meteo."""
     import urllib.request
 
+    q = urllib.parse.quote(cidade)
+    url = (f"https://geocoding-api.open-meteo.com/v1/search?name={q}"
+           "&count=1&language=pt&format=json")
+    try:
+        with urllib.request.urlopen(url, timeout=12) as r:
+            d = json.load(r)
+    except Exception:
+        return None
+    res = (d.get("results") or [None])[0]
+    if not res:
+        return None
+    nome = res["name"]
+    if res.get("admin1"):
+        nome += f", {res['admin1']}"
+    return res["latitude"], res["longitude"], nome
+
+
+def clima(dia: str = "hoje", cidade: str = "") -> str:
+    """Previsao via Open-Meteo. Unica ferramenta que depende de internet.
+
+    A cidade e geocodificada de verdade. Antes as coordenadas de Sao Paulo
+    eram fixas no codigo, entao perguntar por qualquer outra cidade devolvia
+    o tempo de Sao Paulo com o nome errado colado em cima.
+    """
+    import urllib.request
+
+    alvo = (cidade or CIDADE_PADRAO).strip()
+    local = _localizar(alvo)
+    if local is None:
+        return f"Nao encontrei a cidade '{alvo}' nem consegui consultar o clima."
+    lat, lon, nome = local
+
     url = (
-        f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}"
+        f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
         "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max"
         "&current=temperature_2m&timezone=America%2FSao_Paulo&forecast_days=3"
     )
@@ -112,7 +144,7 @@ def clima(dia: str = "hoje") -> str:
     chuva = diario["precipitation_probability_max"][idx]
     agora = d.get("current", {}).get("temperature_2m")
 
-    partes = [f"Em {CIDADE}, {dia}: maxima de {tmax:.0f} graus, minima de {tmin:.0f}"]
+    partes = [f"Em {nome}, {dia}: maxima de {tmax:.0f} graus, minima de {tmin:.0f}"]
     if chuva is not None:
         partes.append(f"chance de chuva de {chuva:.0f} por cento")
     if idx == 0 and agora is not None:
@@ -179,8 +211,9 @@ ESQUEMAS: list[dict[str, Any]] = [
     _f("ler_notas", "Le as notas salvas, opcionalmente filtrando por titulo.",
        {"titulo": {**_S, "description": "Filtro por titulo. Opcional."}}, []),
     _f("que_horas", "Diz a data e a hora atual.", {}, []),
-    _f("clima", "Previsao do tempo.",
-       {"dia": {**_S, "description": "hoje, amanha ou depois."}}, []),
+    _f("clima", "Previsao do tempo de uma cidade.",
+       {"dia": {**_S, "description": "hoje, amanha ou depois."},
+        "cidade": {**_S, "description": "Nome da cidade. Vazio = cidade do dono."}}, []),
     _f("relatorio_do_dia", "Resumo do dia: falas, lembretes e notas.", {}, []),
 ]
 
@@ -190,6 +223,10 @@ def executar(nome: str, argumentos: dict[str, Any]) -> str:
     fn = REGISTRO.get(nome)
     if fn is None:
         return f"Ferramenta desconhecida: {nome}"
+    # O modelo manda null nos campos opcionais ("dia": null) em vez de omitir,
+    # e isso chegava como None onde o codigo espera str. Descartar deixa o
+    # valor padrao da funcao valer, que e o que o modelo queria dizer.
+    argumentos = {k: v for k, v in argumentos.items() if v is not None}
     try:
         return fn(**argumentos)
     except TypeError as e:

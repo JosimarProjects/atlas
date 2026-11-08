@@ -43,6 +43,34 @@ def _limpar(texto: str) -> str:
     return texto.strip()
 
 
+# O Qwen e um modelo chines e, com prompt de sistema curto, as vezes responde
+# em mandarim -- principalmente quando a pergunta tem nome proprio. Instrucao
+# no prompt nao resolve sozinha; detectamos e refazemos.
+_CJK = re.compile(r"[　-鿿＀-￯]")
+
+
+def _derivou_idioma(texto: str) -> bool:
+    return bool(_CJK.search(texto))
+
+
+_NUMEROS = re.compile(r"-?\d+(?:[.,]\d+)?")
+
+
+def _fiel_aos_dados(resposta: str, dados: str) -> bool:
+    """A resposta preservou os numeros que a ferramenta devolveu?
+
+    Sem esta trava o modelo reescreve o resultado e inventa: perguntado sobre
+    Curitiba, respondeu "aproximadamente 30 graus, com leve brisa" sem que
+    numero nenhum tivesse vindo da API. Se os numeros da ferramenta nao
+    aparecem na resposta, a resposta nao vale.
+    """
+    esperados = {n.replace(",", ".") for n in _NUMEROS.findall(dados)}
+    if not esperados:
+        return True
+    presentes = {n.replace(",", ".") for n in _NUMEROS.findall(resposta)}
+    return esperados.issubset(presentes)
+
+
 class CerebroIndisponivel(RuntimeError):
     """O llama-server nao respondeu."""
 
@@ -171,6 +199,29 @@ def responder(pergunta: str, memoria: Memoria) -> str:
         }
 
     texto = _limpar(_chamar(mensagens))
+
+    if observacoes:
+        # Resultado de ferramenta ja vem como frase falavel em portugues. Se a
+        # reescrita do modelo perdeu os numeros ou trocou de idioma, ela nao
+        # vale: entregamos o dado cru, que e sempre verdadeiro.
+        dados = observacoes[-1].split(" -> ", 1)[-1]
+        if not texto or _derivou_idioma(texto) or not _fiel_aos_dados(texto, dados):
+            memoria.registrar("assistant", dados)
+            return dados
+        memoria.registrar("assistant", texto)
+        _talvez_resumir(memoria)
+        return texto
+
+    if _derivou_idioma(texto):
+        # Refaz uma vez, com a lingua cobrada no proprio turno do usuario --
+        # ali o modelo obedece mais do que a uma regra la no system.
+        reforco = mensagens + [{
+            "role": "user",
+            "content": "Reescreva a resposta anterior inteiramente em portugues do Brasil.",
+        }]
+        segunda = _limpar(_chamar(reforco))
+        texto = segunda if segunda and not _derivou_idioma(segunda) else ""
+
     if not texto and observacoes:
         # O modelo gastou o orcamento pensando: entrega o dado cru em vez de
         # ficar mudo -- vale mais que silencio numa assistente de voz.

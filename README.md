@@ -159,6 +159,29 @@ Tudo em [`atlas/config.py`](atlas/config.py), ou por variável de ambiente:
 
 ---
 
+## ⚠️ O backend Vulkan corrompe a inferência deste modelo
+
+A descoberta mais cara desta build. **O mesmo arquivo GGUF, a mesma pergunta, dois backends:**
+
+| Backend | *"Quem foi Dom Pedro II do Brasil?"* |
+|---|---|
+| **Vulkan** (RX 7600) | *"um bispo católico conhecido por sua atuação na Segunda Guerra"* — e inventa palavras: *"bisbranos"*, *"Seminarsersa"* |
+| **CPU** (mesmo GGUF) | *"Imperador do Brasil, último monarca antes da República"* ✅ |
+
+Não é a quantização e não é download corrompido — o arquivo bate byte a byte com o HuggingFace (`6169341984`). É o backend.
+
+**Como reconhecer:** respostas curtas saem perfeitas (*"A capital da França é Paris."*), e a degradação cresce com o comprimento da saída. Primeiro aparecem palavras inexistentes, depois o texto mistura idiomas, por fim o raciocínio entra em loop e nunca termina — você recebe `content` vazio com `finish_reason: length`.
+
+**Como diagnosticar na sua máquina:** suba o mesmo modelo numa segunda porta com `--n-gpu-layers 0` e compare. Se a CPU acerta e a GPU não, é isto.
+
+```bash
+engine/llama/llama-server.exe --model <modelo> --port 8081 --n-gpu-layers 0
+```
+
+**Solução:** use o build **ROCm** (`llama-*-bin-win-rocm-*.zip`), não o Vulkan, em placas AMD RDNA3.
+
+> O reel que inspirou o projeto resolve isso por outro caminho: no Linux, o driver da comunidade expõe a placa via ROCm e o problema não aparece. No Windows o build ROCm oficial cobre o mesmo terreno.
+
 ## Armadilhas do Qwen3.5-9B (medidas, não supostas)
 
 Cinco coisas quebraram antes de funcionar. Todas estão corrigidas no código — ficam aqui porque nenhuma é óbvia e todas custam horas.
