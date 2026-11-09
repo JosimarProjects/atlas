@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from . import cerebro, cofre, config, ferramentas, lembrancas
+from . import audio, cerebro, cofre, config, espacos, ferramentas, lembrancas
 from .memoria import Memoria, conectar
 
 PASTA_WEB = config.RAIZ / "web"
@@ -35,16 +35,17 @@ PASTA_WEB = config.RAIZ / "web"
 # Uma conversa por vez: a Atlas e pessoal, nao multiusuario. O lock evita
 # que duas abas abertas embaralhem a memoria uma da outra.
 _vez = threading.Lock()
-_memoria: Memoria | None = None
+# Uma Memoria por conversa, reaproveitada entre pedidos: abrir conexao e
+# reler o resumo a cada turno seria desperdicio.
+_memorias: dict[int, Memoria] = {}
 
 TOKEN: str = ""
 
 
-def _mem() -> Memoria:
-    global _memoria
-    if _memoria is None:
-        _memoria = Memoria()
-    return _memoria
+def _mem(conversa_id: int) -> Memoria:
+    if conversa_id not in _memorias:
+        _memorias[conversa_id] = Memoria(conversa_id)
+    return _memorias[conversa_id]
 
 
 class Atendente(BaseHTTPRequestHandler):
@@ -101,11 +102,31 @@ class Atendente(BaseHTTPRequestHandler):
             achados = (lembrancas.buscar(busca, limite=30) if busca
                        else lembrancas.listar(limite=50))
             return self._json({"fatos": achados, "total": lembrancas.total()})
+        if rota == "/api/espacos":
+            return self._json({"espacos": espacos.listar_espacos()})
+        if rota == "/api/conversas":
+            q = parse_qs(urlparse(self.path).query)
+            eid = int(q.get("espaco", ["0"])[0] or 0)
+            if not eid:
+                lista = espacos.listar_espacos()
+                eid = lista[0]["id"] if lista else 0
+            return self._json({"espaco": eid,
+                               "conversas": espacos.listar_conversas(eid)})
+        if rota == "/api/audio-pronto":
+            return self._json(audio.pronto())
         if rota == "/api/historico":
             con = conectar()
-            linhas = con.execute(
-                "SELECT quando, papel, conteudo FROM falas ORDER BY id DESC LIMIT 60"
-            ).fetchall()
+            q = parse_qs(urlparse(self.path).query)
+            cid = int(q.get("conversa", ["0"])[0] or 0)
+            if cid:
+                linhas = con.execute(
+                    "SELECT quando, papel, conteudo FROM falas "
+                    "WHERE conversa_id = ? ORDER BY id DESC LIMIT 120",
+                    (cid,)).fetchall()
+            else:
+                linhas = con.execute(
+                    "SELECT quando, papel, conteudo FROM falas "
+                    "ORDER BY id DESC LIMIT 60").fetchall()
             return self._json({"falas": [dict(l) for l in reversed(linhas)]})
         if rota == "/api/lembretes":
             return self._json({"texto": ferramentas.listar_lembretes()})
@@ -117,18 +138,25 @@ class Atendente(BaseHTTPRequestHandler):
             return self._json({"erro": "token invalido"}, 401)
 
         if rota == "/api/conversar":
-            pergunta = (self._corpo().get("pergunta") or "").strip()
+            corpo = self._corpo()
+            pergunta = (corpo.get("pergunta") or "").strip()
             if not pergunta:
                 return self._json({"erro": "pergunta vazia"}, 400)
+            cid = int(corpo.get("conversa") or 0)
+            if not cid:
+                lista = espacos.listar_espacos()
+                cid = espacos.conversa_atual(lista[0]["id"])
             with _vez:
                 try:
-                    resposta = cerebro.responder(pergunta, _mem())
+                    resposta = cerebro.responder(pergunta, _mem(cid))
                 except cerebro.CerebroIndisponivel as e:
                     return self._json({"erro": str(e)}, 503)
                 # O cofre escreve aqui o que so o dono pode ver. Nao passou
                 # pelo modelo e nao esta na memoria -- vai direto para a tela.
                 reservado = cofre.recolher_para_o_dono()
+                titulo = espacos.titular_pela_primeira_fala(cid)
             return self._json({"resposta": resposta, "reservado": reservado,
+                               "conversa": cid, "titulo": titulo,
                                "quando": datetime.now().isoformat(timespec="seconds")})
 
         if rota == "/api/esquecer-fato":
@@ -140,9 +168,61 @@ class Atendente(BaseHTTPRequestHandler):
             return self._json({"ok": bool(fid) and lembrancas.esquecer(int(fid))})
 
         if rota == "/api/esquecer":
-            with _vez:
-                _mem().esquecer_tudo()
-            return self._json({"ok": True})
+            cid = int(self._corpo().get("conversa") or 0)
+            if cid:
+                with _vez:
+                    _mem(cid).esquecer_tudo()
+                    _memorias.pop(cid, None)
+            return self._json({"ok": bool(cid)})
+
+        # ---------------------------------------------------- espacos
+        if rota == "/api/espaco-criar":
+            c = self._corpo()
+            return self._json({"id": espacos.criar_espaco(
+                c.get("nome") or "Novo", c.get("icone") or "📁",
+                c.get("instrucao") or "")})
+        if rota == "/api/espaco-remover":
+            return self._json({"ok": espacos.remover_espaco(
+                int(self._corpo().get("id") or 0))})
+        if rota == "/api/conversa-criar":
+            c = self._corpo()
+            return self._json({"id": espacos.criar_conversa(
+                int(c.get("espaco") or 0), c.get("titulo") or "Nova conversa")})
+        if rota == "/api/conversa-remover":
+            cid = int(self._corpo().get("id") or 0)
+            _memorias.pop(cid, None)
+            return self._json({"ok": espacos.remover_conversa(cid)})
+        if rota == "/api/conversa-renomear":
+            c = self._corpo()
+            return self._json({"ok": espacos.renomear_conversa(
+                int(c.get("id") or 0), c.get("titulo") or "")})
+
+        # ------------------------------------------------------ audio
+        if rota == "/api/ouvir":
+            n = int(self.headers.get("Content-Length", 0))
+            if not n:
+                return self._json({"erro": "audio vazio"}, 400)
+            try:
+                texto = audio.transcrever_bytes(self.rfile.read(n))
+            except Exception as e:
+                return self._json({"erro": f"{type(e).__name__}: {e}"}, 500)
+            return self._json({"texto": texto})
+
+        if rota == "/api/falar":
+            texto = (self._corpo().get("texto") or "").strip()
+            if not texto:
+                return self._json({"erro": "texto vazio"}, 400)
+            try:
+                wav = audio.sintetizar_wav(texto)
+            except Exception as e:
+                return self._json({"erro": f"{type(e).__name__}: {e}"}, 500)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(wav)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(wav)
+            return None
 
         if rota == "/api/visao":
             # Ligar ou desligar a visao exige reiniciar o cerebro: o projetor

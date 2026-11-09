@@ -69,6 +69,35 @@ bash scripts/baixa-embeddings.sh
 powershell -File scripts/servidor-memoria.ps1 -Cpu
 ```
 
+
+---
+
+## Espaços e conversas
+
+Até aqui a Atlas tinha **uma** conversa: uma tabela de falas e um resumo só. Isso cai por terra assim que você usa ela para coisas diferentes — o resumo do trabalho contamina a conversa pessoal, e achar o que foi dito sobre um assunto vira rolar tudo.
+
+```
+espaço (Pessoal, Trabalho, Flipnet…)
+  └── conversa (thread com título e resumo próprios)
+        └── falas
+```
+
+Cada espaço pode ter uma **instrução extra**, somada ao prompt base — é o que faz a Atlas falar diferente no trabalho e em casa. Conversas ganham título sozinhas, a partir da primeira pergunta.
+
+> **O que não se divide é a memória de longo prazo.** Fato é fato: se você mandou guardar o nome de um remédio no espaço Pessoal, ela tem de lembrar no Trabalho também. Dividir memória por espaço criaria amnésias arbitrárias.
+
+## Voz no navegador
+
+| | |
+|---|---|
+| 🎙 no campo de texto | grava, transcreve e já envia |
+| 🔊 em cada resposta | ouve aquela resposta |
+| **Falar as respostas** | fala tudo automaticamente |
+
+O navegador grava em WebM/Opus, que o Whisper não lê — o `ffmpeg` converte para PCM 16 kHz mono antes de transcrever. Tudo local: a voz não sai da máquina, nem na entrada nem na saída.
+
+> **O microfone só funciona em HTTPS ou localhost.** É regra do navegador, não da Atlas. No endereço da rede local (`http://192.168…`) ele recusa sem explicar — use o link do túnel, que é HTTPS. A interface detecta esse caso e avisa.
+
 ---
 
 ## Cofre de senhas: o modelo nunca vê o valor

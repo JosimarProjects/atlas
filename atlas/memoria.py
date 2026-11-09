@@ -53,10 +53,16 @@ def conectar() -> sqlite3.Connection:
 
 
 class Memoria:
-    """Janela curta de falas + resumo acumulado, ambos persistidos."""
+    """Janela curta de falas + resumo, de UMA conversa.
 
-    def __init__(self) -> None:
+    Cada conversa tem a sua: o resumo do trabalho nao vaza para a conversa
+    pessoal. O que atravessa tudo e a memoria de longo prazo (lembrancas.py),
+    que e do dono, nao da conversa.
+    """
+
+    def __init__(self, conversa_id: int | None = None) -> None:
         self.con = conectar()
+        self.conversa_id = conversa_id
 
     # ------------------------------------------------------------- estado
     def _ler(self, chave: str, padrao: str = "") -> str:
@@ -75,30 +81,55 @@ class Memoria:
 
     @property
     def resumo(self) -> str:
-        return self._ler("resumo")
+        if self.conversa_id is None:
+            return self._ler("resumo")
+        l = self.con.execute("SELECT resumo FROM conversas WHERE id = ?",
+                             (self.conversa_id,)).fetchone()
+        return (l["resumo"] if l else "") or ""
 
     @resumo.setter
     def resumo(self, texto: str) -> None:
-        self._gravar("resumo", texto[: config.MEMORIA_RESUMO_MAX])
+        corte = texto[: config.MEMORIA_RESUMO_MAX]
+        if self.conversa_id is None:
+            self._gravar("resumo", corte)
+            return
+        self.con.execute("UPDATE conversas SET resumo = ? WHERE id = ?",
+                         (corte, self.conversa_id))
+        self.con.commit()
+
+    def _filtro(self) -> str:
+        return "WHERE conversa_id = ?" if self.conversa_id is not None else ""
+
+    def _param(self) -> tuple:
+        return (self.conversa_id,) if self.conversa_id is not None else ()
 
     # -------------------------------------------------------------- falas
     def registrar(self, papel: str, conteudo: str) -> None:
         self.con.execute(
-            "INSERT INTO falas (quando, papel, conteudo) VALUES (?, ?, ?)",
-            (datetime.now().isoformat(timespec="seconds"), papel, conteudo),
+            "INSERT INTO falas (quando, papel, conteudo, conversa_id) "
+            "VALUES (?, ?, ?, ?)",
+            (datetime.now().isoformat(timespec="seconds"), papel, conteudo,
+             self.conversa_id),
         )
         self.con.commit()
+        if self.conversa_id is not None:
+            self.con.execute("UPDATE conversas SET atualizado = ? WHERE id = ?",
+                             (datetime.now().isoformat(timespec="seconds"),
+                              self.conversa_id))
+            self.con.commit()
 
     def janela(self) -> list[dict[str, str]]:
         """As ultimas falas, em ordem cronologica, prontas para o chat."""
         linhas = self.con.execute(
-            "SELECT papel, conteudo FROM falas ORDER BY id DESC LIMIT ?",
-            (config.MEMORIA_JANELA,),
+            f"SELECT papel, conteudo FROM falas {self._filtro()} "
+            "ORDER BY id DESC LIMIT ?", (*self._param(), config.MEMORIA_JANELA),
         ).fetchall()
         return [{"role": l["papel"], "content": l["conteudo"]} for l in reversed(linhas)]
 
     def precisa_resumir(self) -> bool:
-        total = self.con.execute("SELECT COUNT(*) AS n FROM falas").fetchone()["n"]
+        total = self.con.execute(
+            f"SELECT COUNT(*) AS n FROM falas {self._filtro()}",
+            self._param()).fetchone()["n"]
         # Resume quando a conversa passa do dobro da janela, e so de vez em
         # quando, para nao gastar o modelo a cada turno.
         return total > config.MEMORIA_JANELA * 2 and total % config.MEMORIA_JANELA == 0
@@ -106,9 +137,9 @@ class Memoria:
     def falas_para_resumir(self) -> list[dict[str, str]]:
         """Falas que ja sairam da janela literal e ainda cabem num resumo."""
         linhas = self.con.execute(
-            "SELECT papel, conteudo FROM falas "
+            f"SELECT papel, conteudo FROM falas {self._filtro()} "
             "ORDER BY id DESC LIMIT ? OFFSET ?",
-            (config.MEMORIA_JANELA, config.MEMORIA_JANELA),
+            (*self._param(), config.MEMORIA_JANELA, config.MEMORIA_JANELA),
         ).fetchall()
         return [{"role": l["papel"], "content": l["conteudo"]} for l in reversed(linhas)]
 
@@ -149,7 +180,14 @@ class Memoria:
         return msgs
 
     def esquecer_tudo(self) -> None:
-        self.con.executescript("DELETE FROM falas; DELETE FROM estado;")
+        """Apaga ESTA conversa. A memoria de longo prazo nao e tocada."""
+        if self.conversa_id is None:
+            self.con.executescript("DELETE FROM falas; DELETE FROM estado;")
+        else:
+            self.con.execute("DELETE FROM falas WHERE conversa_id = ?",
+                             (self.conversa_id,))
+            self.con.execute("UPDATE conversas SET resumo = '' WHERE id = ?",
+                             (self.conversa_id,))
         self.con.commit()
 
 

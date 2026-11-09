@@ -85,6 +85,41 @@
   }
   .botao:hover{border-color:var(--roxo);color:var(--roxo2)}
 
+  /* abas espacos / memoria */
+  .abas{display:flex;gap:2px;padding:0 14px 8px}
+  .aba{
+    flex:1;padding:6px;text-align:center;font-size:11.5px;cursor:pointer;
+    border-radius:8px;color:var(--tenue);border:1px solid transparent
+  }
+  .aba.ativa{background:var(--painel2);border-color:var(--borda);color:var(--texto)}
+
+  .espacos{display:flex;gap:5px;flex-wrap:wrap;padding:0 14px 10px}
+  .esp{
+    display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;
+    background:var(--painel2);border:1px solid var(--borda);cursor:pointer;
+    font-size:12px;transition:.15s
+  }
+  .esp:hover{border-color:var(--roxo)}
+  .esp.ativo{background:var(--roxo);border-color:var(--roxo);color:#fff}
+  .esp .n{font-size:10px;opacity:.65}
+  .esp.mais{color:var(--tenue);font-weight:700}
+
+  .convs{flex:1;overflow-y:auto;padding:0 14px 14px}
+  .conv{
+    display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:9px;
+    cursor:pointer;font-size:12.5px;margin-bottom:3px;position:relative
+  }
+  .conv:hover{background:var(--painel2)}
+  .conv.ativa{background:var(--painel2);border-left:2px solid var(--roxo)}
+  .conv .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .conv .d{font-size:10px;color:var(--tenue)}
+  .conv .x{
+    border:none;background:none;color:var(--tenue);cursor:pointer;opacity:0;
+    font-size:14px;padding:0 3px;border-radius:4px
+  }
+  .conv:hover .x{opacity:1}
+  .conv .x:hover{color:var(--vermelho)}
+
   .fatos{flex:1;overflow-y:auto;padding:0 14px 14px}
   .fato{
     background:var(--painel2);border:1px solid var(--borda);border-radius:10px;
@@ -193,6 +228,24 @@
   }
   .enviar:hover:not(:disabled){background:var(--roxo2)}
   .enviar:disabled{opacity:.35;cursor:not-allowed}
+  .mic{
+    width:34px;height:34px;flex:0 0 34px;border:1px solid var(--borda);
+    border-radius:9px;background:var(--painel);color:var(--fraco);cursor:pointer;
+    display:grid;place-items:center;font-size:15px;transition:.15s
+  }
+  .mic:hover{border-color:var(--roxo);color:var(--roxo2)}
+  .mic.gravando{
+    background:var(--vermelho);border-color:var(--vermelho);color:#fff;
+    animation:bate 1.1s ease-in-out infinite
+  }
+  @keyframes bate{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.55)}
+                  70%{box-shadow:0 0 0 9px rgba(248,113,113,0)}}
+  .mic.ocupado{opacity:.4;pointer-events:none}
+  .falar{
+    border:none;background:none;color:var(--tenue);cursor:pointer;font-size:13px;
+    padding:2px 5px;border-radius:5px;margin-left:6px
+  }
+  .falar:hover{color:var(--roxo2);background:var(--painel2)}
   .dica{
     max-width:760px;margin:8px auto 0;font-size:11px;color:var(--tenue);text-align:center
   }
@@ -236,13 +289,25 @@
     </div>
   </div>
 
-  <div class="secao" style="padding-bottom:4px">
-    <div class="rotulo">Memória — <span id="nFatos">0</span> fatos</div>
+  <div class="abas">
+    <div class="aba ativa" id="abaConversas" onclick="trocarAba('conversas')">Conversas</div>
+    <div class="aba" id="abaMemoria" onclick="trocarAba('memoria')">Memória <span id="nFatos">0</span></div>
   </div>
-  <div class="fatos" id="fatos"></div>
+
+  <div id="painelConversas">
+    <div class="espacos" id="espacos"></div>
+    <div class="secao" style="padding:0 14px 8px">
+      <button class="botao" style="margin:0" onclick="novaConversa()">+ Nova conversa</button>
+    </div>
+  </div>
+  <div class="convs" id="convs"></div>
+  <div class="fatos" id="fatos" style="display:none"></div>
 
   <div class="secao" style="border-top:1px solid var(--borda)">
-    <button class="botao" onclick="limpar()">Começar conversa nova</button>
+    <div class="linha" style="padding:4px 10px">
+      <span style="font-size:12.5px">Falar as respostas</span>
+      <label class="chave"><input type="checkbox" id="vozLigada"><span class="trilho"></span></label>
+    </div>
   </div>
 </aside>
 
@@ -278,6 +343,7 @@
     <div class="caixa">
       <textarea id="campo" rows="1" placeholder="Pergunte alguma coisa…"
                 oninput="crescer(this)" onkeydown="tecla(event)"></textarea>
+      <button class="mic" id="mic" onclick="gravar()" title="Falar">🎙</button>
       <button class="enviar" id="btn" onclick="enviar()" title="Enviar">➤</button>
     </div>
     <div class="dica">Enter envia · Shift+Enter quebra linha</div>
@@ -291,6 +357,111 @@ const api = (r, o = {}) => fetch(r, {
 });
 
 let ocupado = false;
+let ESPACO = +localStorage.getItem('atlas.espaco') || 0;
+let CONVERSA = +localStorage.getItem('atlas.conversa') || 0;
+
+/* ------------------------------------------------- espacos e conversas */
+function trocarAba(qual){
+  const c = qual === 'conversas';
+  document.getElementById('abaConversas').classList.toggle('ativa', c);
+  document.getElementById('abaMemoria').classList.toggle('ativa', !c);
+  document.getElementById('painelConversas').style.display = c ? '' : 'none';
+  document.getElementById('convs').style.display = c ? '' : 'none';
+  document.getElementById('fatos').style.display = c ? 'none' : '';
+  if (!c) fatos();
+}
+
+function guardar(){
+  localStorage.setItem('atlas.espaco', ESPACO);
+  localStorage.setItem('atlas.conversa', CONVERSA);
+}
+
+async function carregarEspacos(){
+  const d = await (await api('/api/espacos')).json();
+  const alvo = document.getElementById('espacos');
+  alvo.innerHTML = '';
+  if (!ESPACO && d.espacos.length) ESPACO = d.espacos[0].id;
+  for (const e of d.espacos){
+    const el = document.createElement('div');
+    el.className = 'esp' + (e.id === ESPACO ? ' ativo' : '');
+    const i = document.createElement('span'); i.textContent = e.icone;
+    const n = document.createElement('span'); n.textContent = e.nome;
+    const q = document.createElement('span'); q.className = 'n';
+    q.textContent = e.conversas || '';
+    el.append(i, n, q);
+    el.onclick = () => { ESPACO = e.id; CONVERSA = 0; guardar();
+                         carregarEspacos(); carregarConversas(); };
+    el.oncontextmenu = (ev) => { ev.preventDefault(); removerEspaco(e.id, e.nome); };
+    alvo.appendChild(el);
+  }
+  const mais = document.createElement('div');
+  mais.className = 'esp mais'; mais.textContent = '+';
+  mais.title = 'Novo espaco'; mais.onclick = novoEspaco;
+  alvo.appendChild(mais);
+}
+
+async function novoEspaco(){
+  const nome = prompt('Nome do espaco (ex: Flipnet, Estudos):');
+  if (!nome) return;
+  const icone = prompt('Um emoji para ele:', '\u{1F4C1}') || '\u{1F4C1}';
+  const d = await (await api('/api/espaco-criar', {
+    method: 'POST', body: JSON.stringify({nome, icone})})).json();
+  ESPACO = d.id; CONVERSA = 0; guardar();
+  carregarEspacos(); carregarConversas();
+}
+
+async function removerEspaco(id, nome){
+  if (!confirm('Apagar o espaco "' + nome + '" e TODAS as conversas dele?')) return;
+  const d = await (await api('/api/espaco-remover', {
+    method: 'POST', body: JSON.stringify({id})})).json();
+  if (!d.ok){ alert('Nao da para apagar o ultimo espaco.'); return; }
+  ESPACO = 0; CONVERSA = 0; guardar();
+  carregarEspacos(); carregarConversas();
+}
+
+async function carregarConversas(){
+  const d = await (await api('/api/conversas?espaco=' + ESPACO)).json();
+  const alvo = document.getElementById('convs');
+  alvo.innerHTML = '';
+  if (!CONVERSA && d.conversas.length) CONVERSA = d.conversas[0].id;
+  for (const c of d.conversas){
+    const el = document.createElement('div');
+    el.className = 'conv' + (c.id === CONVERSA ? ' ativa' : '');
+    const t = document.createElement('span'); t.className = 't'; t.textContent = c.titulo;
+    const q = document.createElement('span'); q.className = 'd'; q.textContent = c.falas || '';
+    const x = document.createElement('button'); x.className = 'x';
+    x.innerHTML = '&times;'; x.title = 'Apagar';
+    el.append(t, q, x);
+    t.onclick = () => abrirConversa(c.id);
+    x.onclick = (ev) => { ev.stopPropagation(); apagarConversa(c.id, c.titulo); };
+    alvo.appendChild(el);
+  }
+  if (!d.conversas.length) await novaConversa();
+}
+
+async function novaConversa(){
+  const d = await (await api('/api/conversa-criar', {
+    method: 'POST', body: JSON.stringify({espaco: ESPACO})})).json();
+  CONVERSA = d.id; guardar();
+  document.getElementById('fio').innerHTML = '';
+  carregarConversas(); carregarEspacos();
+  document.getElementById('campo').focus();
+}
+
+async function apagarConversa(id, titulo){
+  if (!confirm('Apagar a conversa "' + titulo + '"?')) return;
+  await api('/api/conversa-remover', {method: 'POST', body: JSON.stringify({id})});
+  if (id === CONVERSA){ CONVERSA = 0; document.getElementById('fio').innerHTML = ''; }
+  guardar(); carregarConversas(); carregarEspacos();
+}
+
+async function abrirConversa(id){
+  CONVERSA = id; guardar();
+  const d = await (await api('/api/historico?conversa=' + id)).json();
+  document.getElementById('fio').innerHTML = '';
+  for (const f of d.falas) bolha(f.papel === 'user' ? 'eu' : 'ela', f.conteudo);
+  carregarConversas();
+}
 
 /* ------------------------------------------------------------- conversa */
 function sugerir(el){ document.getElementById('campo').value = el.textContent.trim(); enviar(); }
@@ -355,12 +526,18 @@ async function enviar(){
 
   try {
     const r = await api('/api/conversar', {
-      method: 'POST', body: JSON.stringify({pergunta: texto})
+      method: 'POST', body: JSON.stringify({pergunta: texto, conversa: CONVERSA})
     });
     const d = await r.json();
     esperando.remove();
     if (d.erro) bolha('ela erro', d.erro);
-    else bolha('ela', d.resposta || '(sem resposta)', d.reservado);
+    else {
+      if (d.conversa){ CONVERSA = d.conversa; guardar(); }
+      const el = bolha('ela', d.resposta || '(sem resposta)', d.reservado);
+      adicionarBotaoFalar(el, d.resposta);
+      if (document.getElementById('vozLigada').checked) falar(d.resposta);
+      carregarConversas();
+    }
   } catch (e) {
     esperando.remove();
     bolha('ela erro', 'Não consegui falar com a Atlas. Ela está ligada?');
@@ -369,13 +546,65 @@ async function enviar(){
     document.getElementById('btn').disabled = false;
     document.getElementById('orbe').classList.remove('pensando');
     campo.focus();
-    estado(); fatos();
+    estado();
   }
 }
 
-async function limpar(){
-  await api('/api/esquecer', {method: 'POST'});
-  location.reload();
+/* ------------------------------------------------------------- audio */
+let gravador = null, pedacos = [];
+
+function adicionarBotaoFalar(el, texto){
+  if (!texto) return;
+  const b = document.createElement('button');
+  b.className = 'falar'; b.textContent = '\u{1F50A}'; b.title = 'Ouvir';
+  b.onclick = () => falar(texto);
+  el.querySelector('.hora').appendChild(b);
+}
+
+async function falar(texto){
+  try {
+    const r = await api('/api/falar', {method: 'POST', body: JSON.stringify({texto})});
+    if (!r.ok) return;
+    new Audio(URL.createObjectURL(await r.blob())).play();
+  } catch (e) {}
+}
+
+async function gravar(){
+  const bt = document.getElementById('mic');
+  if (gravador && gravador.state === 'recording'){ gravador.stop(); return; }
+  let fluxo;
+  try {
+    fluxo = await navigator.mediaDevices.getUserMedia({audio: true});
+  } catch (e) {
+    // O navegador so libera o microfone em HTTPS ou em localhost. No
+    // endereco da rede local (http://192.168...) ele recusa sem explicar.
+    const inseguro = location.protocol === 'http:' &&
+                     !['localhost', '127.0.0.1'].includes(location.hostname);
+    bolha('ela erro', inseguro
+      ? 'O navegador so libera o microfone em HTTPS. Use o link do tunel, ou abra em localhost.'
+      : 'Nao consegui acessar o microfone.');
+    return;
+  }
+  pedacos = [];
+  gravador = new MediaRecorder(fluxo);
+  gravador.ondataavailable = (e) => pedacos.push(e.data);
+  gravador.onstop = async () => {
+    fluxo.getTracks().forEach(t => t.stop());
+    bt.classList.remove('gravando'); bt.classList.add('ocupado');
+    try {
+      const r = await fetch('/api/ouvir' + (T ? '?t=' + T : ''), {
+        method: 'POST', body: new Blob(pedacos),
+        headers: T ? {'X-Atlas-Token': T} : {}});
+      const d = await r.json();
+      if (d.texto){
+        const campo = document.getElementById('campo');
+        campo.value = d.texto; crescer(campo); enviar();
+      } else if (d.erro) bolha('ela erro', d.erro);
+    } catch (e) { bolha('ela erro', 'Nao consegui transcrever o audio.'); }
+    bt.classList.remove('ocupado');
+  };
+  gravador.start();
+  bt.classList.add('gravando');
 }
 
 /* --------------------------------------------------------------- estado */
@@ -459,7 +688,15 @@ document.getElementById('visao').addEventListener('change', async (ev) => {
   }
 });
 
-estado(); fatos();
+(async () => {
+  await carregarEspacos();
+  await carregarConversas();
+  if (CONVERSA) abrirConversa(CONVERSA);
+  const a = await (await api('/api/audio-pronto')).json();
+  if (!a.ouvir) document.getElementById('mic').style.display = 'none';
+  if (!a.falar) document.getElementById('vozLigada').closest('.secao').style.display = 'none';
+})();
+estado();
 setInterval(estado, 10000);
 document.getElementById('campo').focus();
 if (innerWidth < 820) document.getElementById('lateral').classList.add('oculta');
