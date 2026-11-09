@@ -128,6 +128,40 @@ Na aba **Memória** há um campo onde você escreve o que quer que ela saiba. Es
 
 Cada fato mostra quantas vezes já foi recuperado — fato usado com frequência é fato que importa.
 
+
+---
+
+## Avisos que chegam sozinhos
+
+Lembrete só vale se chegar na hora. A lista de pendências serve para *"o que tenho em aberto"*; é inútil para *"remédio todo dia às 14h"*.
+
+```
+você>  me lembra de tomar remédio todo dia às 14h
+       ↓ cartão de confirmação
+       ↓ você aprova
+   14:00, todo dia, o WhatsApp apita — sem ninguém pedir
+```
+
+Um relógio roda junto do servidor web e confere a cada 30 segundos. A aba **Avisos** mostra tudo que está agendado, para você conferir se ela entendeu certo.
+
+**Criar pede confirmação, disparar não.** Criar é regra permanente — dali em diante ela manda mensagem sozinha, sem ninguém olhando — e a ordem pode ter vindo de uma página que ela leu. Já o disparo não pode esperar clique: lembrete de remédio às 14h que aguarda aprovação não é lembrete.
+
+> **O destino é sempre o seu próprio número.** Agendamento não manda mensagem a terceiros no automático — isso seria uma máquina de spam disparável por injeção. E, pelo mesmo motivo invertido, mensagem **para você mesmo** dispensa a trava: não há terceiro a quem vazar nada.
+
+## Consolidação: a memória é revisada, não só acumulada
+
+Extrair sem revisar produz um monte, não uma memória. Com o tempo aparecem três males:
+
+| | |
+|---|---|
+| **fragmentos** | *"trabalha na Flipnet"* + *"está na Flipnet há 3 anos"* |
+| **contradições** | *"mora em Santo André"* e depois *"mora em Ribeirão Pires"* |
+| **poeira** | fatos gravados uma vez e nunca recuperados |
+
+A consolidação agrupa fatos por proximidade de vetor e devolve uma versão única, mais precisa. Peça *"revisa a memória"*.
+
+**Na dúvida, não mexe.** Reescrever memória é arriscado — um resumo errado apaga o fato certo. Então só funde o que está claramente duplicado, só descarta o que o modelo marca como superado, e **grava o novo antes de apagar os antigos**: se algo falhar no meio, a perda é uma duplicata, nunca o fato.
+
 ---
 
 ## Cofre de senhas: o modelo nunca vê o valor

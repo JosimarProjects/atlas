@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.parse
 from datetime import datetime
 from typing import Any, Callable
 
-from . import cofre, config, lembrancas, mcp, whatsapp
+from . import (agenda_propria, cofre, config, confirmacao, consolidacao,
+               lembrancas, mcp, whatsapp)
 from .memoria import conectar
 
 CIDADE_PADRAO = os.environ.get("ATLAS_CIDADE", "Ribeirao Pires")
@@ -414,6 +416,92 @@ def enviar_email(para: str, assunto: str, corpo: str) -> str:
     })
 
 
+
+# ---------------------------------------------------------- agendamentos
+def agendar_lembrete(texto: str, hora: str, repete: str = "diario",
+                     dia_semana: str = "", data: str = "",
+                     no_whatsapp: bool = True) -> str:
+    """Pede para criar um aviso recorrente. O dono confirma antes.
+
+    Criar e regra permanente -- dali em diante a Atlas manda mensagem
+    sozinha, sem ninguem olhando. Por isso passa pela trava. O disparo
+    depois nao passa: lembrete de remedio que espera clique nao e lembrete.
+    """
+    hora = hora.strip()
+    if not re.fullmatch(r"\d{1,2}:\d{2}", hora):
+        return f"Nao entendi o horario '{hora}'. Use HH:MM, ex: 14:00."
+    h, m = (int(x) for x in hora.split(":"))
+    if h > 23 or m > 59:
+        return f"Horario invalido: {hora}."
+    hora = f"{h:02d}:{m:02d}"
+
+    repete = (repete or "diario").lower().strip()
+    if repete not in ("diario", "semanal", "uma_vez"):
+        repete = "diario"
+
+    dia = None
+    if repete == "semanal":
+        nomes = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+        alvo = (dia_semana or "").lower().strip()
+        dia = next((i for i, n in enumerate(nomes) if n in alvo), None)
+        if dia is None:
+            return "Para semanal, diga o dia (ex: toda terca)."
+
+    canal = "whatsapp" if no_whatsapp and config.MEU_WHATSAPP else "tela"
+    if no_whatsapp and not config.MEU_WHATSAPP:
+        return ("Para avisar no WhatsApp eu preciso do seu numero. "
+                "Defina ATLAS_MEU_WHATSAPP, ou peca o lembrete na tela.")
+
+    ficha = {"id": 0, "texto": texto.strip(), "repete": repete, "hora": hora,
+             "dia_semana": dia, "data": data, "canal": canal}
+
+    def executar() -> str:
+        agenda_propria.criar(texto, hora, repete, dia, data, canal)
+        return f"Pronto: {agenda_propria.descrever(ficha)}"
+
+    return confirmacao.pedir(
+        acao="agendar",
+        resumo=f"Criar aviso recorrente: {agenda_propria.descrever(ficha)}",
+        detalhes={"Aviso": texto.strip(), "Quando": agenda_propria.descrever(ficha)},
+        executar=executar,
+    )
+
+
+def listar_agendamentos() -> str:
+    """Os avisos recorrentes ativos."""
+    itens = agenda_propria.listar()
+    if not itens:
+        return "Nenhum aviso agendado."
+    return "Avisos agendados: " + "; ".join(
+        agenda_propria.descrever(a) for a in itens)
+
+
+def cancelar_agendamento(sobre: str) -> str:
+    """Cancela um aviso recorrente. Criterio literal, como o de apagar memoria."""
+    alvo = sobre.strip().lower()
+    if len(alvo) < 3:
+        return "Diga melhor qual aviso cancelar."
+    achados = [a for a in agenda_propria.listar() if alvo in a["texto"].lower()]
+    if not achados:
+        return f"Nao achei aviso com '{sobre}'."
+    if len(achados) > 3:
+        return f"'{sobre}' casa com {len(achados)} avisos. Seja mais especifico."
+    nomes = [a["texto"] for a in achados if agenda_propria.remover(a["id"])]
+    return f"Cancelei: {'; '.join(nomes)}."
+
+
+def revisar_memoria() -> str:
+    """Funde fatos duplicados e refina os antigos."""
+    if not consolidacao.precisa():
+        return ("A memoria nao tem o que consolidar agora -- nenhum grupo de "
+                "fatos parecidos o bastante.")
+    r = consolidacao.rodar()
+    if not r["consolidados"]:
+        return f"Revisei {r['grupos_vistos']} grupos e nao havia o que fundir."
+    return (f"Revisei a memoria: {r['antes']} fatos viraram {r['depois']}. "
+            + "; ".join(r["mudancas"][:3]))
+
+
 # ------------------------------------------------------------------ relatorio
 def relatorio_do_dia() -> str:
     """Resume o dia: o que foi conversado, lembretes abertos, notas novas."""
@@ -458,6 +546,10 @@ REGISTRO: dict[str, Callable[..., str]] = {
     "agenda": agenda,
     "criar_evento": criar_evento,
     "enviar_email": enviar_email,
+    "agendar_lembrete": agendar_lembrete,
+    "listar_agendamentos": listar_agendamentos,
+    "cancelar_agendamento": cancelar_agendamento,
+    "revisar_memoria": revisar_memoria,
 }
 
 
@@ -550,7 +642,59 @@ ESQUEMAS: list[dict[str, Any]] = [
        ["titulo", "inicio"]),
     _f("enviar_email", "Envia um e-mail.",
        {"para": _S, "assunto": _S, "corpo": _S}, ["para", "assunto", "corpo"]),
+    _f("agendar_lembrete",
+       "Cria um aviso que chega sozinho na hora marcada, todo dia ou toda "
+       "semana. Use para 'me lembra todo dia as', 'me avisa as', 'todo dia'.",
+       {"texto": {**_S, "description": "O que avisar. Ex: tomar remedio."},
+        "hora": {**_S, "description": "HH:MM. Ex: 14:00."},
+        "repete": {**_S, "description": "diario, semanal ou uma_vez."},
+        "dia_semana": {**_S, "description": "Para semanal. Ex: terca."},
+        "data": {**_S, "description": "AAAA-MM-DD, para uma_vez."},
+        "no_whatsapp": {"type": "boolean", "description": "Avisar no WhatsApp."}},
+       ["texto", "hora"]),
+    _f("listar_agendamentos", "Os avisos recorrentes ativos.", {}, []),
+    _f("cancelar_agendamento", "Cancela um aviso recorrente.",
+       {"sobre": {**_S, "description": "Trecho do aviso. Ex: remedio."}}, ["sobre"]),
+    _f("revisar_memoria",
+       "Revisa a memoria: funde fatos repetidos e refina os antigos.", {}, []),
 ]
+
+
+def _tipos_de(nome: str) -> dict[str, str]:
+    for e in ESQUEMAS:
+        if e["function"]["name"] == nome:
+            return {k: (v.get("type") or "string")
+                    for k, v in e["function"]["parameters"]["properties"].items()}
+    return {}
+
+
+def _ajustar_tipos(nome: str, argumentos: dict[str, Any]) -> dict[str, Any]:
+    """Converte o que o modelo mandou para o tipo que a funcao espera.
+
+    Um 9B e solto com tipos: mandou dias="hoje" onde o schema pede inteiro,
+    e repete=true onde pede texto. Cada caso desses estourava com um
+    ValueError ou AttributeError cru na cara do dono. Em vez de blindar
+    funcao por funcao, converte-se aqui, uma vez, pelo tipo declarado.
+    """
+    esperado = _tipos_de(nome)
+    ajustado: dict[str, Any] = {}
+    for k, v in argumentos.items():
+        alvo = esperado.get(k)
+        try:
+            if alvo == "integer" and not isinstance(v, int):
+                # "hoje", "amanha" e afins nao viram numero: cai no padrao.
+                digitos = "".join(c for c in str(v) if c.isdigit())
+                if not digitos:
+                    continue
+                v = int(digitos)
+            elif alvo == "boolean" and not isinstance(v, bool):
+                v = str(v).strip().lower() in ("true", "sim", "1", "yes")
+            elif alvo == "string" and not isinstance(v, str):
+                v = str(v)
+        except (TypeError, ValueError):
+            continue    # nao deu para converter: deixa o padrao valer
+        ajustado[k] = v
+    return ajustado
 
 
 def executar(nome: str, argumentos: dict[str, Any]) -> str:
@@ -562,6 +706,7 @@ def executar(nome: str, argumentos: dict[str, Any]) -> str:
     # e isso chegava como None onde o codigo espera str. Descartar deixa o
     # valor padrao da funcao valer, que e o que o modelo queria dizer.
     argumentos = {k: v for k, v in argumentos.items() if v is not None}
+    argumentos = _ajustar_tipos(nome, argumentos)
     try:
         return fn(**argumentos)
     except TypeError as e:

@@ -81,6 +81,9 @@ DONO = os.environ.get("ATLAS_DONO", "Josimar")
 # Conta Google usada pelas ferramentas de e-mail e agenda.
 EMAIL_DONO = os.environ.get(
     "ATLAS_EMAIL", "josimar.negocioslmtda@gmail.com")
+# Para onde vao os lembretes agendados. E o numero do PROPRIO dono:
+# agendamento nao serve para mandar mensagem a terceiros no automatico.
+MEU_WHATSAPP = os.environ.get("ATLAS_MEU_WHATSAPP", "11945036185")
 
 # Prompt curto de proposito. Com uma lista longa de regras de estilo -- ainda
 # mais regras negativas ("nada de markdown, bullet, emoji") -- este 9B passa a

@@ -158,6 +158,25 @@
     border:1px solid var(--borda);border-radius:4px;padding:0 4px;margin-left:5px
   }
 
+  .aviso{
+    background:var(--painel2);border:1px solid var(--borda);border-radius:10px;
+    padding:9px 11px;margin-bottom:7px;font-size:12.5px;position:relative
+  }
+  .aviso .qdo{
+    display:inline-block;font-size:9.5px;text-transform:uppercase;
+    letter-spacing:.6px;color:var(--verde);font-weight:700;margin-bottom:3px
+  }
+  .aviso .tx{display:block;font-weight:600}
+  .aviso .canal{color:var(--fraco);font-size:11.5px}
+  .aviso .x{
+    position:absolute;top:6px;right:6px;width:19px;height:19px;border:none;
+    background:none;color:var(--tenue);cursor:pointer;border-radius:5px;
+    font-size:14px;line-height:1;opacity:0;transition:.15s
+  }
+  .aviso:hover .x{opacity:1}
+  .aviso .x:hover{background:rgba(248,113,113,.15);color:var(--vermelho)}
+  .vaziozinho{color:var(--tenue);font-size:12px;padding:12px 4px;text-align:center}
+
   /* ------------------------------------------------------------ conversa */
   main{flex:1;display:flex;flex-direction:column;min-width:0}
   header{
@@ -334,6 +353,7 @@
   <div class="abas">
     <div class="aba ativa" id="abaConversas" onclick="trocarAba('conversas')">Conversas</div>
     <div class="aba" id="abaMemoria" onclick="trocarAba('memoria')">Memória <span id="nFatos">0</span></div>
+    <div class="aba" id="abaAvisos" onclick="trocarAba('avisos')">Avisos <span id="nAvisos">0</span></div>
   </div>
 
   <div id="painelConversas">
@@ -354,6 +374,13 @@
       </div>
     </div>
     <div id="listaFatos"></div>
+  </div>
+  <div class="fatos" id="painelAvisos" style="display:none">
+    <div id="listaAvisos"></div>
+    <div class="ajuda" style="font-size:11px;color:var(--tenue);padding:8px 2px;line-height:1.45">
+      Peça na conversa: "me lembra de tomar remédio todo dia às 14h".
+      O aviso chega sozinho, no WhatsApp ou aqui na tela.
+    </div>
   </div>
 
   <div class="secao" style="border-top:1px solid var(--borda)">
@@ -415,13 +442,62 @@ let CONVERSA = +localStorage.getItem('atlas.conversa') || 0;
 
 /* ------------------------------------------------- espacos e conversas */
 function trocarAba(qual){
+  for (const [aba, painel] of [['abaConversas', null], ['abaMemoria', 'fatos'],
+                               ['abaAvisos', 'painelAvisos']]){
+    document.getElementById(aba).classList.toggle('ativa', aba.endsWith(
+      qual === 'conversas' ? 'Conversas' : qual === 'memoria' ? 'Memoria' : 'Avisos'));
+    if (painel) document.getElementById(painel).style.display = 'none';
+  }
   const c = qual === 'conversas';
-  document.getElementById('abaConversas').classList.toggle('ativa', c);
-  document.getElementById('abaMemoria').classList.toggle('ativa', !c);
   document.getElementById('painelConversas').style.display = c ? '' : 'none';
   document.getElementById('convs').style.display = c ? '' : 'none';
-  document.getElementById('fatos').style.display = c ? 'none' : '';
-  if (!c) fatos();
+  if (qual === 'memoria'){ document.getElementById('fatos').style.display = ''; fatos(); }
+  if (qual === 'avisos'){ document.getElementById('painelAvisos').style.display = ''; avisos(); }
+}
+
+async function avisos(){
+  const d = await (await api('/api/avisos')).json();
+  const alvo = document.getElementById('listaAvisos');
+  document.getElementById('nAvisos').textContent = (d.agendados || []).length;
+  alvo.innerHTML = '';
+  if (!(d.agendados || []).length){
+    const v = document.createElement('div');
+    v.className = 'vaziozinho'; v.textContent = 'Nenhum aviso agendado ainda.';
+    alvo.appendChild(v);
+    return;
+  }
+  for (const texto of d.agendados){
+    // "tomar remedio — todo dia as 14:00, no WhatsApp"
+    const [oque, resto] = texto.split(' — ');
+    const e = document.createElement('div');
+    e.className = 'aviso';
+    const q = document.createElement('span'); q.className = 'qdo';
+    q.textContent = (resto || '').split(',')[0] || '';
+    const t = document.createElement('span'); t.className = 'tx'; t.textContent = oque;
+    const ca = document.createElement('span'); ca.className = 'canal';
+    ca.textContent = (resto || '').split(',').slice(1).join(',').trim();
+    const x = document.createElement('button');
+    x.className = 'x'; x.innerHTML = '&times;'; x.title = 'Cancelar';
+    x.onclick = () => cancelarAviso(oque);
+    e.append(x, q, t, ca);
+    alvo.appendChild(e);
+  }
+}
+
+async function cancelarAviso(texto){
+  if (!confirm(`Cancelar o aviso "${texto}"?`)) return;
+  // Vai pela conversa de proposito: a Atlas confirma o que cancelou, e
+  // fica registrado no historico em vez de sumir em silencio.
+  document.getElementById('campo').value = 'cancela o aviso ' + texto;
+  trocarAba('conversas'); enviar();
+}
+
+/* Avisos que venceram aparecem na conversa assim que a tela os busca. */
+async function buscarAvisosVencidos(){
+  try {
+    const d = await (await api('/api/avisos')).json();
+    for (const a of (d.avisos || [])) bolha('ela', a.texto);
+  } catch (e) {}
 }
 
 function guardar(){
@@ -760,6 +836,10 @@ async function estado(){
       d.ferramentas + ' ferramentas · roda no seu computador';
     document.getElementById('velocidade').textContent =
       d.tokens_s ? d.tokens_s.toFixed(0) + ' tok/s' : '';
+    // O contador da aba Avisos vinha so quando alguem clicava nela, entao
+    // um agendamento recem-criado aparecia como zero.
+    if (typeof d.avisos === 'number')
+      document.getElementById('nAvisos').textContent = d.avisos;
     const v = document.getElementById('visao');
     if (!v.dataset.mexendo) v.checked = !!d.visao;
   } catch (e) { marcar('pCerebro', false); }
@@ -835,6 +915,7 @@ document.getElementById('visao').addEventListener('change', async (ev) => {
 })();
 estado();
 setInterval(estado, 10000);
+setInterval(buscarAvisosVencidos, 30000);
 document.getElementById('campo').focus();
 if (innerWidth < 820) document.getElementById('lateral').classList.add('oculta');
 </script>

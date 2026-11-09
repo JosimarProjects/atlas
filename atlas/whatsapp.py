@@ -18,7 +18,7 @@ import urllib.request
 from functools import lru_cache
 from pathlib import Path
 
-from . import confirmacao
+from . import config, confirmacao
 
 BASE = os.environ.get(
     "ATLAS_EVOLUTION_URL",
@@ -106,9 +106,20 @@ def mandar_whatsapp(numero: str, mensagem: str) -> str:
                {"number": alvo, "text": texto}, metodo="POST")
         return f"Mensagem enviada para {alvo}."
 
+    # Para o proprio numero do dono a trava nao se justifica: nao ha
+    # terceiro a quem vazar nada, e exigir clique para a Atlas avisar VOCE
+    # so atrapalha. Para qualquer outro numero, a trava continua.
+    if config.MEU_WHATSAPP and alvo == _normalizar(config.MEU_WHATSAPP):
+        try:
+            return executar()
+        except Exception as e:
+            return f"Nao consegui enviar ({type(e).__name__})."
+
     return confirmacao.pedir(
         acao="whatsapp",
         resumo=f"Mandar WhatsApp para {alvo}",
         detalhes={"Para": alvo, "Mensagem": texto},
         executar=executar,
+        ferramenta="whatsapp_enviar",
+        argumentos={"numero": alvo, "mensagem": texto},
     )

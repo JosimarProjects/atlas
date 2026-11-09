@@ -27,8 +27,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from . import (audio, cerebro, cofre, config, confirmacao, espacos,
-               ferramentas, lembrancas)
+from . import (agenda_propria, audio, cerebro, cofre, config,
+               confirmacao, espacos, ferramentas, lembrancas)
 from .memoria import Memoria, conectar
 
 PASTA_WEB = config.RAIZ / "web"
@@ -122,6 +122,11 @@ class Atendente(BaseHTTPRequestHandler):
                 "FROM fatos ORDER BY acessos DESC, id DESC LIMIT 200").fetchall()
             return self._json({"fatos": [dict(l) for l in linhas],
                                "total": lembrancas.total()})
+        if rota == "/api/avisos":
+            # Avisos que venceram e ainda nao apareceram na tela.
+            return self._json({"avisos": agenda_propria.recolher_da_tela(),
+                               "agendados": [agenda_propria.descrever(a)
+                                             for a in agenda_propria.listar()]})
         if rota == "/api/pendentes":
             return self._json({"pedidos": confirmacao.listar()})
         if rota == "/api/audio-pronto":
@@ -362,6 +367,7 @@ def _estado_atual() -> dict[str, Any]:
             "falas": falas,
             "lembretes": pendentes,
             "ferramentas": len(ferramentas.ESQUEMAS),
+            "avisos": len(agenda_propria.listar()),
             "dono": config.DONO,
         }
 
@@ -390,6 +396,10 @@ def main() -> int:
             guardado.write_text(TOKEN, encoding="utf-8")
         else:
             TOKEN = guardado.read_text(encoding="utf-8").strip()
+
+    # O relogio dos agendamentos sobe junto do servidor: e ele que faz
+    # o lembrete das 14h chegar sem ninguem pedir.
+    agenda_propria.ligar_relogio()
 
     servidor = ThreadingHTTPServer((endereco, a.porta), Atendente)
     print(f"Atlas web em http://127.0.0.1:{a.porta}")
