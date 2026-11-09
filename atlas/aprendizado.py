@@ -43,6 +43,11 @@ Exemplos do que extrair:
 "nao consigo tomar leite" -> tem intolerancia a lactose
 "odeio acordar cedo" -> prefere nao marcar nada de manha
 "moro em Ribeirao Pires" -> mora em Ribeirao Pires
+"meu PC tem uma RX 7600 de 8GB" -> o PC dele tem uma RX 7600 de 8GB
+"to estudando espanhol nas tercas" -> estuda espanhol as tercas
+"uso Windows e WSL" -> trabalha no Windows com WSL
+"meu carro e um Onix 2019" -> tem um Onix 2019
+"sou alergico a dipirona" -> e alergico a dipirona
 
 Exemplos do que NAO extrair:
 "que horas sao?" -> nada
@@ -50,7 +55,12 @@ Exemplos do que NAO extrair:
 "me explica quantizacao" -> nada
 "obrigado" -> nada
 
-Regra: se o fato deixa de valer em uma semana, nao extraia.
+Escreva SEMPRE na terceira pessoa, como ficha sobre ele: "tem um Onix 2019",
+nunca "meu carro e um Onix". A memoria e lida meses depois, fora do contexto
+da frase original -- "meu PC" nao diz de quem.
+
+Teste: o fato continuaria verdadeiro daqui a um mes? Se nao, nao extraia.
+Vale qualquer assunto -- pessoa, trabalho, equipamento, rotina, gosto, saude.
 Responda apenas o JSON. Sem fatos, devolva lista vazia."""
 
 _SCHEMA: dict[str, Any] = {

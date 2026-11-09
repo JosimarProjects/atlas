@@ -111,7 +111,12 @@ Depois de cada turno, uma segunda passagem curta olha o que foi dito e pergunta:
 2. **Nada de efêmero** — fato que caduca em uma semana é conversa, não memória
 3. **Deduplicação semântica** — se já existe algo com cosseno ≥ 0,86, o novo é descartado
 
-Medido: *"não consigo tomar leite"* → guardou em **saúde**. *"que horas são?"* → nada. Mas *"reunião da Flipnet"* **não** virou "trabalha na Flipnet" — a inferência indireta ainda escapa. Para esses, o painel abaixo.
+**Medido em 15 casos: 14 certos.** Pega declaração direta (*"trabalho na Flipnet"*, *"minha filha faz 8 anos em março"*), pega menção de passagem (*"meu PC tem uma RX 7600"*, *"estudo espanhol nas terças"*), e ignora o efêmero (*"que horas são?"*, *"vai chover?"*).
+
+Dois ajustes vieram da medição:
+
+- **Exemplos estreitos ensinam estreito.** A primeira versão só tinha exemplos de trabalho, família e saúde — e o modelo perdia equipamento e rotina. Ampliar os pares resolveu; acrescentar *regras* não teria resolvido.
+- **Terceira pessoa, sempre.** Ele gravava *"meu PC tem uma RX 7600"*. A memória é lida meses depois, fora do contexto da frase: *"meu"* não diz de quem. Agora grava *"o PC dele tem uma RX 7600"*.
 
 ### Contar direto
 
