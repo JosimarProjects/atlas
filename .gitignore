@@ -16,3 +16,5 @@ venv/
 Thumbs.db
 desktop.ini
 memoria-sync/
+logs/
+web/*.png

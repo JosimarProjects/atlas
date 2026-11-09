@@ -42,7 +42,11 @@ CREATE TABLE IF NOT EXISTS notas (
 
 
 def conectar() -> sqlite3.Connection:
-    con = sqlite3.connect(config.BANCO)
+    # check_same_thread=False porque o servidor web atende cada pedido numa
+    # thread diferente, e o objeto Memoria vive entre pedidos. E seguro aqui:
+    # a Atlas e de uma pessoa so, e web.py serializa a conversa inteira num
+    # lock -- nunca ha duas escritas ao mesmo tempo.
+    con = sqlite3.connect(config.BANCO, check_same_thread=False, timeout=15)
     con.row_factory = sqlite3.Row
     con.executescript(_ESQUEMA)
     return con

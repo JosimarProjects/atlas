@@ -110,6 +110,52 @@ Instalar a Atlas em outro computador é clonar o repositório da memória e impo
 
 > **O repositório da memória tem de ser PRIVADO.** São suas conversas. O cofre viaja cifrado — sem a senha-mestra é ruído — mas o resto, não. Os vetores não são versionados: são binários, derivados do texto, e a importação os recalcula.
 
+
+---
+
+## Interface web
+
+```powershell
+.\scripts\ligar.ps1               # cérebro + memória
+python -m atlas.web                # http://127.0.0.1:8800
+```
+
+Chat com o estado ao vivo na lateral: cérebro, memória semântica, cofre, velocidade em tok/s, e **os fatos que ela lembra** — cada um com o motivo pelo qual você mandou guardar.
+
+**O modo visual é um interruptor.** Ligar a leitura de imagens exige reiniciar o cérebro, porque o projetor é carregado na subida e ocupa 918 MB — com ele, o modelo não cabe na placa. Então a interface faz isso por você, e avisa se não couber.
+
+### De outro computador
+
+```powershell
+python -m atlas.web --rede --senha
+#   da rede local:  http://192.168.x.x:8800/?t=TOKEN
+```
+
+O `--senha` gera um token por sessão. **Sem ele, qualquer um na mesma rede conversa com a Atlas e lê sua memória.**
+
+### De fora de casa
+
+```powershell
+.\scripts\publicar-fora.ps1
+#   https://algo-aleatorio.trycloudflare.com
+```
+
+Túnel da Cloudflare: **sem abrir porta no roteador, sem IP fixo, sem certificado** — é a sua máquina que sai para a Cloudflare, então funciona atrás de CGNAT. O endereço sai em HTTPS e muda a cada vez que você liga.
+
+> Só publique com `--senha`. O endereço é público: quem tiver o link entra.
+
+### A API
+
+Qualquer cliente — app, script, outra máquina — fala com os mesmos endpoints:
+
+| | |
+|---|---|
+| `POST /api/conversar` | `{"pergunta": "..."}` → resposta + segredos do cofre |
+| `GET /api/estado` | cérebro, memória, cofre, tok/s |
+| `GET /api/memoria?q=` | fatos guardados, com o motivo |
+| `GET /api/historico` | as últimas falas |
+| `POST /api/visao` | `{"ligar": true}` liga a leitura de imagens |
+
 ---
 
 ## Instalação

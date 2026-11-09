@@ -213,15 +213,22 @@ def buscar(consulta: str, limite: int = 5) -> list[dict[str, Any]]:
     return [por_id[i] for i in ids if i in por_id]
 
 
+# Nunca selecionamos `vetor`: e um BLOB de 3 KB que nao serve a ninguem fora
+# da busca, e que quebrava a API web ("Object of type bytes is not JSON
+# serializable") assim que a interface listava a memoria.
+_COLUNAS = "id, criado, acessado, acessos, categoria, assunto, texto, motivo, origem"
+
+
 def listar(categoria: str = "", limite: int = 20) -> list[dict[str, Any]]:
     con = abrir()
     if categoria:
         linhas = con.execute(
-            "SELECT * FROM fatos WHERE categoria = ? ORDER BY id DESC LIMIT ?",
-            (categoria, limite)).fetchall()
+            f"SELECT {_COLUNAS} FROM fatos WHERE categoria = ? "
+            "ORDER BY id DESC LIMIT ?", (categoria, limite)).fetchall()
     else:
         linhas = con.execute(
-            "SELECT * FROM fatos ORDER BY id DESC LIMIT ?", (limite,)).fetchall()
+            f"SELECT {_COLUNAS} FROM fatos ORDER BY id DESC LIMIT ?",
+            (limite,)).fetchall()
     return [dict(l) for l in linhas]
 
 
