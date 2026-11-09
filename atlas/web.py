@@ -131,6 +131,14 @@ class Atendente(BaseHTTPRequestHandler):
             return self._json({"resposta": resposta, "reservado": reservado,
                                "quando": datetime.now().isoformat(timespec="seconds")})
 
+        if rota == "/api/esquecer-fato":
+            # Caminho deterministico: a interface manda o id e o Python apaga.
+            # Nao passa pelo modelo, entao nao ha como "confirmar" sem fazer --
+            # que foi exatamente o que aconteceu antes de existir a ferramenta
+            # de apagar: ele dizia ter apagado e os fatos continuavam la.
+            fid = self._corpo().get("id")
+            return self._json({"ok": bool(fid) and lembrancas.esquecer(int(fid))})
+
         if rota == "/api/esquecer":
             with _vez:
                 _mem().esquecer_tudo()

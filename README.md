@@ -54,6 +54,10 @@ atlas> - [filmes] Duna 3: João falou que é melhor que o segundo
          (porque: quer ver o filme) — guardado em 08/11
 ```
 
+**Apagar tem dois caminhos.** Pela conversa (*"esquece o filme Duna 3"*) ou pelo **&times;** no cartão da memória, na interface. O segundo não passa pelo modelo: a interface manda o id e o Python apaga.
+
+> Esse botão existe por causa de um erro real. A ferramenta de apagar **não existia**, e quando pedi para remover dois filmes o modelo respondeu que tinha removido — sem ter como. Capacidade que não existe vira alucinação confiante, e é exatamente o que este projeto tenta evitar. Agora a ferramenta existe, e o caminho determinístico também.
+
 **Por que busca híbrida.** Você guarda *"Duna 3, ficção científica, indicação do João"* e depois pergunta *"quais filmes eu mandei guardar?"*. Nenhuma palavra bate — não existe "filme" no que foi salvo. Busca por palavra-chave (FTS5) falha nisso, mas é imbatível para nome próprio e número. Busca por vetor acerta o sentido e erra o termo exato.
 
 As duas rodam e os resultados se fundem por **Reciprocal Rank Fusion**: somar `1/(60+posição)` de cada lista. Isso evita normalizar escalas incomparáveis — BM25 é negativo, cosseno vai de 0 a 1.

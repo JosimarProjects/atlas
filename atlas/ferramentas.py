@@ -270,6 +270,30 @@ def recordar(sobre: str = "", categoria: str = "") -> str:
     return "Isto esta guardado na memoria:" + chr(10) + lembrancas.formatar(achados)
 
 
+
+def esquecer_memoria(sobre: str) -> str:
+    """Apaga da memoria permanente o que casar com `sobre`.
+
+    Esta ferramenta faltava, e a ausencia dela produziu o pior tipo de erro:
+    pedido para apagar dois filmes, o modelo respondeu que tinha apagado --
+    sem ter como. Capacidade que nao existe vira alucinacao confiante.
+    """
+    achados = lembrancas.buscar(sobre, limite=10)
+    if not achados:
+        return f"Nao achei nada guardado sobre '{sobre}'."
+    # Teto de seguranca: apagar memoria nao tem volta, e uma busca vaga nao
+    # pode varrer tudo. Acima disso, o dono escolhe pela interface.
+    if len(achados) > 5:
+        nomes = "; ".join(f["assunto"] for f in achados[:5])
+        return (f"Encontrei {len(achados)} registros sobre '{sobre}' — "
+                f"muitos para apagar de uma vez. Os primeiros sao: {nomes}. "
+                "Peca de forma mais especifica.")
+    apagados = [f["assunto"] for f in achados if lembrancas.esquecer(f["id"])]
+    if not apagados:
+        return "Nao consegui apagar."
+    return f"Apaguei da memoria: {'; '.join(apagados)}."
+
+
 def inventario_memoria() -> str:
     """Diz quanto a Atlas lembra, por categoria."""
     cats = lembrancas.categorias()
@@ -347,6 +371,7 @@ REGISTRO: dict[str, Callable[..., str]] = {
     "ler_pagina": ler_pagina,
     "lembrar": lembrar,
     "recordar": recordar,
+    "esquecer_memoria": esquecer_memoria,
     "inventario_memoria": inventario_memoria,
     "consultar_senha": consultar_senha,
     "listar_senhas": listar_senhas,
@@ -404,6 +429,11 @@ ESQUEMAS: list[dict[str, Any]] = [
        "Use para 'o que eu te falei sobre', 'quais filmes guardei', 'lembra que'.",
        {"sobre": {**_S, "description": "Assunto a procurar."},
         "categoria": {**_S, "description": "Filtra por categoria. Opcional."}}, []),
+    _f("esquecer_memoria",
+       "Apaga da memoria permanente. Use para 'esquece', 'apaga', 'remove da "
+       "memoria', 'nao precisa mais lembrar'.",
+       {"sobre": {**_S, "description": "O que apagar. Ex: 'filmes', 'Duna 3'."}},
+       ["sobre"]),
     _f("inventario_memoria", "Quanto a Atlas lembra, por categoria.", {}, []),
     _f("consultar_senha",
        "Mostra ao dono a senha de um servico. Use para 'qual a senha do', "

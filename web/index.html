@@ -96,6 +96,14 @@
   }
   .fato .as{font-weight:600;display:block;margin-bottom:2px}
   .fato .mo{color:var(--fraco);font-size:11.5px;font-style:italic}
+  .fato{position:relative}
+  .fato .x{
+    position:absolute;top:6px;right:6px;width:19px;height:19px;border:none;
+    background:none;color:var(--tenue);cursor:pointer;border-radius:5px;
+    font-size:14px;line-height:1;opacity:0;transition:.15s
+  }
+  .fato:hover .x{opacity:1}
+  .fato .x:hover{background:rgba(248,113,113,.15);color:var(--vermelho)}
 
   /* ------------------------------------------------------------ conversa */
   main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -405,8 +413,10 @@ async function fatos(){
     for (const f of (d.fatos || []).slice(0, 25)){
       const e = document.createElement('div');
       e.className = 'fato';
-      e.innerHTML = `<span class="cat"></span><span class="as"></span>
+      e.innerHTML = `<button class="x" title="Esquecer">&times;</button>
+                     <span class="cat"></span><span class="as"></span>
                      <span class="tx"></span><div class="mo"></div>`;
+      e.querySelector('.x').onclick = () => esquecerFato(f.id, f.assunto);
       e.querySelector('.cat').textContent = f.categoria || 'geral';
       e.querySelector('.as').textContent = f.assunto || '';
       e.querySelector('.tx').textContent = f.texto || '';
@@ -414,6 +424,14 @@ async function fatos(){
       alvo.appendChild(e);
     }
   } catch (e) {}
+}
+
+async function esquecerFato(id, assunto){
+  if (!confirm(`Esquecer "${assunto}"?
+
+Isso não tem volta.`)) return;
+  await api('/api/esquecer-fato', {method: 'POST', body: JSON.stringify({id})});
+  fatos(); estado();
 }
 
 /* ----------------------------------------------------------- modo visual */
