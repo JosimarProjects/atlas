@@ -16,7 +16,7 @@ param(
     [int]$Ctx = 8192,
     [int]$Gpu = 999,         # todas as camadas na GPU
     [switch]$Rocm,           # usa o build ROCm (nao enumera a placa neste driver)
-    [switch]$SemVisao        # nao carrega o projetor de imagem
+    [switch]$ComVisao        # carrega o projetor de imagem (+918 MB de VRAM)
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,14 +58,36 @@ $args = @(
     "--metrics"
 )
 
-# O mmproj e o encoder de imagem. Sem ele o servidor aceita a imagem e a
-# ignora em silencio, entao so anunciamos visao quando o arquivo existe.
-if ((Test-Path $visao) -and ((Get-Item $visao).Length -gt 800MB) -and -not $SemVisao) {
+# Visao DESLIGADA por padrao. O mmproj ocupa 918 MB de VRAM, e com ele o
+# Qwen de 6,2 GB mais o cache nao cabem nos 8 GB: o llama.cpp desiste do
+# offload e sobe tudo na CPU, a 5,7 tok/s em vez de 43,5. Ler imagem e raro;
+# responder rapido e o tempo todo. Para analisar uma imagem, suba uma
+# segunda instancia com -ComVisao noutra porta.
+if ($ComVisao -and (Test-Path $visao) -and ((Get-Item $visao).Length -gt 800MB)) {
     $args += @("--mmproj", $visao)
     $temVisao = "sim"
 } else {
     $temVisao = "nao"
 }
 
+# Quanto sobra na placa AGORA. A VRAM livre oscila com o navegador, o
+# compositor do Windows e qualquer outro processo grafico -- por isso o
+# mesmo comando que funcionou ontem pode derrubar o modelo para a CPU hoje,
+# sem erro visivel, so ficando 7x mais lento. Entao conferimos antes.
+$livre = 0
+$saida = & $server --list-devices 2>&1 | Out-String
+if ($saida -match '(\d+)\s*MiB free') { $livre = [int]$matches[1] }
+
+$precisa = [math]::Round(((Get-Item $model).Length / 1MB) + ($Ctx / 1024.0 * 40) + 600)
+if ($temVisao -eq "sim") { $precisa += 950 }
+
 Write-Output "backend: $backend | visao: $temVisao | contexto: $Ctx"
+Write-Output "VRAM: $livre MB livres, precisa de ~$precisa MB"
+
+if ($livre -lt $precisa) {
+    Write-Warning "NAO CABE NA VRAM. O modelo vai rodar na CPU (~6 tok/s em vez de ~43)."
+    Write-Warning "Feche o que estiver usando a placa, ou reduza: -Ctx 4096"
+    if ($temVisao -eq "sim") { Write-Warning "Ou tire a visao: nao passe -ComVisao" }
+}
+
 & $server @args

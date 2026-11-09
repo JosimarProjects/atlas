@@ -6,7 +6,7 @@
 # uma consulta a memoria ficaria na fila atras de uma resposta de 40 tokens.
 param(
     [int]$Port = 8083,
-    [switch]$Cpu          # roda na CPU e deixa os 8 GB inteiros para o cerebro
+    [switch]$Gpu          # forca a GPU (nao recomendado: rouba VRAM do cerebro)
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,10 +18,15 @@ if (-not (Test-Path $model)) {
     throw "Modelo de embeddings nao encontrado. Rode: bash scripts/baixa-embeddings.sh"
 }
 
-# 310 MB cabem folgado junto do Qwen (6,2 GB) nos 8 GB, e na GPU a busca na
-# memoria fica imperceptivel. -Cpu existe para quando o contexto do cerebro
-# for aumentado e a VRAM apertar.
-$camadas = if ($Cpu) { 0 } else { 999 }
+# CPU por PADRAO. Na GPU este modelo reserva ~311 MB que fazem falta ao
+# cerebro: com eles, o Qwen nao cabe inteiro e o llama.cpp derruba TUDO para
+# a CPU -- 5,7 tok/s em vez de 43. E na CPU o embedding sai em 0,04 s, entao
+# nao ha o que ganhar na placa.
+# --n-gpu-layers 0 nao basta: o backend Vulkan ainda reservava ~309 MB na
+# placa. GGML_VK_VISIBLE_DEVICES="" tambem nao (string vazia nao filtra
+# nada). O que resolve e --device none, que desliga o offload de verdade.
+$camadas = if ($Gpu) { 999 } else { 0 }
+$dispositivo = if ($Gpu) { "Vulkan0" } else { "none" }
 
 & $server `
     --model $model `
@@ -31,4 +36,5 @@ $camadas = if ($Cpu) { 0 } else { 999 }
     --pooling mean `
     --ctx-size 2048 `
     --n-gpu-layers $camadas `
+    --device $dispositivo `
     --ubatch-size 2048

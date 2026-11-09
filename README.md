@@ -151,15 +151,27 @@ O download do modelo usa `aria2` em 16 conexões e **retoma de onde parou** se c
 
 ### 3. Rodar
 
-```bash
-# terminal 1 — o cérebro
-powershell -File scripts/servidor.ps1
-
-# terminal 2 — a assistente
+```powershell
+.\scripts\ligar.ps1              # sobe cérebro + memória, na ordem certa
+python -m atlas.main --texto      # teclado
 python -m atlas.main              # voz
-python -m atlas.main --texto      # teclado, para testar sem áudio
 python -m atlas.main --diga "que horas são?"
+.\scripts\ligar.ps1 -Parar       # desliga
 ```
+
+> **A ordem importa, e o `ligar.ps1` existe por causa disso.** A VRAM livre
+> oscila com o navegador e o compositor do Windows. Quando o modelo não cabe,
+> o llama.cpp **não dá erro**: sobe tudo na CPU e segue respondendo a ~6 tok/s
+> em vez de 43. O script sobe o cérebro primeiro, enquanto a placa está mais
+> vazia, deixa a memória na CPU, e avisa se o cérebro escorregou.
+
+**Três coisas disputavam os 8 GB** e cada uma custava a velocidade inteira:
+
+| | VRAM | Decisão |
+|---|---|---|
+| Projetor de visão | 918 MB | desligado por padrão (`-ComVisao` liga) |
+| Servidor de embeddings | 309 MB | `--device none` — `--n-gpu-layers 0` não bastava |
+| Contexto de 16k | ~340 MB | reduzido para 8k |
 
 ### 4. Ligar junto com o PC
 
