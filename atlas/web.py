@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from . import audio, cerebro, cofre, config, espacos, ferramentas, lembrancas
+from . import (audio, cerebro, cofre, config, confirmacao, espacos,
+               ferramentas, lembrancas)
 from .memoria import Memoria, conectar
 
 PASTA_WEB = config.RAIZ / "web"
@@ -112,6 +113,8 @@ class Atendente(BaseHTTPRequestHandler):
                 eid = lista[0]["id"] if lista else 0
             return self._json({"espaco": eid,
                                "conversas": espacos.listar_conversas(eid)})
+        if rota == "/api/pendentes":
+            return self._json({"pedidos": confirmacao.listar()})
         if rota == "/api/audio-pronto":
             return self._json(audio.pronto())
         if rota == "/api/historico":
@@ -156,6 +159,7 @@ class Atendente(BaseHTTPRequestHandler):
                 reservado = cofre.recolher_para_o_dono()
                 titulo = espacos.titular_pela_primeira_fala(cid)
             return self._json({"resposta": resposta, "reservado": reservado,
+                               "pendentes": confirmacao.listar(),
                                "conversa": cid, "titulo": titulo,
                                "quando": datetime.now().isoformat(timespec="seconds")})
 
@@ -174,6 +178,14 @@ class Atendente(BaseHTTPRequestHandler):
                     _mem(cid).esquecer_tudo()
                     _memorias.pop(cid, None)
             return self._json({"ok": bool(cid)})
+
+        # ------------------------------------------------ confirmacao
+        if rota == "/api/confirmar":
+            ok, msg = confirmacao.confirmar(self._corpo().get("id") or "")
+            return self._json({"ok": ok, "mensagem": msg})
+        if rota == "/api/recusar":
+            return self._json({"ok": confirmacao.recusar(
+                self._corpo().get("id") or "")})
 
         # ---------------------------------------------------- espacos
         if rota == "/api/espaco-criar":

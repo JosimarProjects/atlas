@@ -73,6 +73,9 @@ MEMORIA_RESUMO_MAX = 1200       # caracteres do resumo acumulado
 
 NOME = "Atlas"
 DONO = os.environ.get("ATLAS_DONO", "Josimar")
+# Conta Google usada pelas ferramentas de e-mail e agenda.
+EMAIL_DONO = os.environ.get(
+    "ATLAS_EMAIL", "josimar.negocioslmtda@gmail.com")
 
 # Prompt curto de proposito. Com uma lista longa de regras de estilo -- ainda
 # mais regras negativas ("nada de markdown, bullet, emoji") -- este 9B passa a

@@ -188,6 +188,30 @@
     color:var(--amarelo);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer
   }
 
+  .pedido{
+    margin-top:10px;background:rgba(124,92,255,.08);
+    border:1px solid rgba(124,92,255,.45);border-radius:12px;padding:12px 14px
+  }
+  .pedido .cab{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+  .pedido .cab .selo{
+    font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;
+    background:var(--roxo);color:#fff;padding:2px 7px;border-radius:999px;font-weight:700
+  }
+  .pedido dl{margin:9px 0 0;font-size:12.5px;display:grid;
+             grid-template-columns:auto 1fr;gap:3px 10px}
+  .pedido dt{color:var(--tenue)}
+  .pedido dd{margin:0;word-break:break-word;white-space:pre-wrap}
+  .pedido .acoes{display:flex;gap:8px;margin-top:11px}
+  .pedido button{
+    flex:1;padding:7px;border-radius:8px;font:inherit;font-size:12.5px;
+    cursor:pointer;border:1px solid var(--borda);background:var(--painel);
+    color:var(--texto);transition:.15s
+  }
+  .pedido .sim{background:var(--roxo);border-color:var(--roxo);color:#fff}
+  .pedido .sim:hover{background:var(--roxo2)}
+  .pedido .nao:hover{border-color:var(--vermelho);color:var(--vermelho)}
+  .pedido.resolvido{opacity:.5;pointer-events:none}
+
   .pontinhos{display:flex;gap:4px;padding:5px 2px}
   .pontinhos i{
     width:6px;height:6px;border-radius:50%;background:var(--tenue);
@@ -536,6 +560,7 @@ async function enviar(){
       const el = bolha('ela', d.resposta || '(sem resposta)', d.reservado);
       adicionarBotaoFalar(el, d.resposta);
       if (document.getElementById('vozLigada').checked) falar(d.resposta);
+      for (const p of (d.pendentes || [])) cartaoPedido(p);
       carregarConversas();
     }
   } catch (e) {
@@ -548,6 +573,60 @@ async function enviar(){
     campo.focus();
     estado();
   }
+}
+
+/* -------------------------------------------------------- confirmacao */
+/* Acao com efeito fora da maquina nunca sai sozinha. O modelo monta o
+   pedido; quem aprova e o dono, vendo destinatario e texto. Se a ordem veio
+   de uma pagina maliciosa que a Atlas leu, ela morre aqui. */
+function cartaoPedido(p){
+  const fio = document.getElementById('fio');
+  const d = document.createElement('div');
+  d.className = 'msg ela';
+  d.innerHTML = '<div class="av"></div><div style="flex:1"></div>';
+  const caixa = document.createElement('div');
+  caixa.className = 'pedido';
+
+  const cab = document.createElement('div');
+  cab.className = 'cab';
+  const selo = document.createElement('span');
+  selo.className = 'selo'; selo.textContent = 'confirmar';
+  const titulo = document.createElement('span');
+  titulo.textContent = p.resumo;
+  cab.append(selo, titulo);
+
+  const dl = document.createElement('dl');
+  for (const [k, v] of Object.entries(p.detalhes || {})){
+    const dt = document.createElement('dt'); dt.textContent = k;
+    const dd = document.createElement('dd'); dd.textContent = v;
+    dl.append(dt, dd);
+  }
+
+  const acoes = document.createElement('div');
+  acoes.className = 'acoes';
+  const sim = document.createElement('button');
+  sim.className = 'sim'; sim.textContent = 'Confirmar';
+  const nao = document.createElement('button');
+  nao.className = 'nao'; nao.textContent = 'Recusar';
+  acoes.append(sim, nao);
+
+  sim.onclick = async () => {
+    sim.textContent = 'Enviando…';
+    const r = await (await api('/api/confirmar', {
+      method: 'POST', body: JSON.stringify({id: p.id})})).json();
+    caixa.classList.add('resolvido');
+    bolha(r.ok ? 'ela' : 'ela erro', r.mensagem || 'Feito.');
+  };
+  nao.onclick = async () => {
+    await api('/api/recusar', {method: 'POST', body: JSON.stringify({id: p.id})});
+    caixa.classList.add('resolvido');
+    bolha('ela', 'Tudo bem, nao fiz nada.');
+  };
+
+  caixa.append(cab, dl, acoes);
+  d.children[1].appendChild(caixa);
+  fio.appendChild(d);
+  rolar();
 }
 
 /* ------------------------------------------------------------- audio */

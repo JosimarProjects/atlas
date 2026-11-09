@@ -15,7 +15,7 @@ import urllib.parse
 from datetime import datetime
 from typing import Any, Callable
 
-from . import cofre, config, lembrancas
+from . import cofre, config, lembrancas, mcp, whatsapp
 from .memoria import conectar
 
 CIDADE_PADRAO = os.environ.get("ATLAS_CIDADE", "Ribeirao Pires")
@@ -337,6 +337,66 @@ def listar_senhas() -> str:
     return f"Tenho {len(itens)} senhas guardadas: " + "; ".join(linhas)
 
 
+
+# ----------------------------------------------------------- fora da maquina
+# Tudo aqui ou le (sem trava) ou PEDE para agir (com trava). Nenhuma funcao
+# destas manda mensagem sozinha -- ver atlas/confirmacao.py para o porque.
+def whatsapp_estado() -> str:
+    """Se o WhatsApp esta conectado."""
+    return whatsapp.estado_whatsapp()
+
+
+def whatsapp_enviar(numero: str, mensagem: str) -> str:
+    """Pede para mandar um WhatsApp. O dono confirma antes de sair."""
+    return whatsapp.mandar_whatsapp(numero, mensagem)
+
+
+def ler_emails(query: str = "in:inbox", quantos: int = 5) -> str:
+    """Procura e-mails na caixa."""
+    return mcp.executar("ler_emails", {
+        "query": query or "in:inbox",
+        "page_size": max(1, min(int(quantos or 5), 10)),
+        "include_headers": True,
+        "user_google_email": config.EMAIL_DONO,
+    })
+
+
+def agenda(dias: int = 1) -> str:
+    """Compromissos dos proximos dias."""
+    from datetime import datetime, timedelta, timezone
+    agora = datetime.now(timezone.utc)
+    return mcp.executar("agenda_de_hoje", {
+        "user_google_email": config.EMAIL_DONO,
+        "time_min": agora.isoformat(timespec="seconds"),
+        "time_max": (agora + timedelta(days=max(1, int(dias or 1)))
+                     ).isoformat(timespec="seconds"),
+        "max_results": 15,
+    })
+
+
+def criar_evento(titulo: str, inicio: str, fim: str = "", descricao: str = "") -> str:
+    """Pede para criar um compromisso. O dono confirma antes."""
+    from datetime import datetime, timedelta
+    if not fim:
+        try:
+            fim = (datetime.fromisoformat(inicio) + timedelta(hours=1)).isoformat()
+        except ValueError:
+            return f"Nao entendi a data '{inicio}'. Use AAAA-MM-DDTHH:MM."
+    return mcp.executar("criar_evento", {
+        "action": "create", "user_google_email": config.EMAIL_DONO,
+        "summary": titulo, "start_time": inicio, "end_time": fim,
+        "description": descricao,
+    })
+
+
+def enviar_email(para: str, assunto: str, corpo: str) -> str:
+    """Pede para enviar um e-mail. O dono confirma antes de sair."""
+    return mcp.executar("mandar_email", {
+        "user_google_email": config.EMAIL_DONO,
+        "to": para, "subject": assunto, "body": corpo,
+    })
+
+
 # ------------------------------------------------------------------ relatorio
 def relatorio_do_dia() -> str:
     """Resume o dia: o que foi conversado, lembretes abertos, notas novas."""
@@ -375,6 +435,12 @@ REGISTRO: dict[str, Callable[..., str]] = {
     "inventario_memoria": inventario_memoria,
     "consultar_senha": consultar_senha,
     "listar_senhas": listar_senhas,
+    "whatsapp_estado": whatsapp_estado,
+    "whatsapp_enviar": whatsapp_enviar,
+    "ler_emails": ler_emails,
+    "agenda": agenda,
+    "criar_evento": criar_evento,
+    "enviar_email": enviar_email,
 }
 
 
@@ -442,6 +508,31 @@ ESQUEMAS: list[dict[str, Any]] = [
        ["servico"]),
     _f("listar_senhas", "Diz quais servicos tem senha guardada, sem revelar.",
        {}, []),
+    _f("whatsapp_estado", "Se o WhatsApp esta conectado.", {}, []),
+    _f("whatsapp_enviar",
+       "Manda mensagem no WhatsApp. Use para 'manda um zap', 'avisa o fulano', "
+       "'manda mensagem para'.",
+       {"numero": {**_S, "description": "Telefone com DDD."},
+        "mensagem": {**_S, "description": "O texto a mandar."}},
+       ["numero", "mensagem"]),
+    _f("ler_emails",
+       "Le os e-mails. Use para 'tenho email', 'o que chegou', 'procura o "
+       "email do fulano'.",
+       {"query": {**_S, "description": "Busca do Gmail. Padrao: in:inbox."},
+        "quantos": {"type": "integer", "description": "Quantos. Padrao 5."}}, []),
+    _f("agenda",
+       "Compromissos da agenda. Use para 'minha agenda', 'o que tenho hoje', "
+       "'tenho reuniao', 'estou livre'.",
+       {"dias": {"type": "integer", "description": "Quantos dias a frente. Padrao 1."}},
+       []),
+    _f("criar_evento", "Cria um compromisso na agenda.",
+       {"titulo": _S,
+        "inicio": {**_S, "description": "AAAA-MM-DDTHH:MM"},
+        "fim": {**_S, "description": "AAAA-MM-DDTHH:MM. Opcional, soma 1 hora."},
+        "descricao": {**_S, "description": "Opcional."}},
+       ["titulo", "inicio"]),
+    _f("enviar_email", "Envia um e-mail.",
+       {"para": _S, "assunto": _S, "corpo": _S}, ["para", "assunto", "corpo"]),
 ]
 
 
