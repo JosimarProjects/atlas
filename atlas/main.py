@@ -11,7 +11,7 @@ import argparse
 import sys
 import time
 
-from . import cerebro, config, voz
+from . import cerebro, cofre, config, voz
 from .memoria import Memoria
 
 # O console do Windows abre em cp1252 e explode num acento qualquer
@@ -35,6 +35,17 @@ def _esperar_cerebro(tentativas: int = 60) -> bool:
     return False
 
 
+def _mostrar_reservado() -> None:
+    """Imprime o que o cofre reservou para os olhos do dono.
+
+    Sai por aqui, e nao pela resposta, porque isto nunca pode entrar no
+    contexto do modelo nem na fila do sintetizador de voz: senha falada em
+    voz alta, ou guardada na memoria de longo prazo, e senha vazada.
+    """
+    for linha in cofre.recolher_para_o_dono():
+        print(linha)
+
+
 def modo_texto(memoria: Memoria) -> None:
     print(f"[atlas] modo texto. Ctrl+C para sair.\n")
     while True:
@@ -50,6 +61,7 @@ def modo_texto(memoria: Memoria) -> None:
             return
         try:
             print(f"atlas> {cerebro.responder(pergunta, memoria)}")
+            _mostrar_reservado()
         except cerebro.CerebroIndisponivel as e:
             print(f"[erro] {e}")
 
@@ -90,6 +102,7 @@ def modo_voz(memoria: Memoria) -> None:
                 dito.append(frase)
                 voz.falar(frase)
             print(f"atlas> {' '.join(dito)}")
+            _mostrar_reservado()
         except cerebro.CerebroIndisponivel as e:
             print(f"[erro] {e}", file=sys.stderr)
             voz.falar("Meu cerebro nao esta respondendo.")

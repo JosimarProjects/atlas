@@ -15,7 +15,7 @@ import urllib.parse
 from datetime import datetime
 from typing import Any, Callable
 
-from . import config, lembrancas
+from . import cofre, config, lembrancas
 from .memoria import conectar
 
 CIDADE_PADRAO = os.environ.get("ATLAS_CIDADE", "Ribeirao Pires")
@@ -279,6 +279,40 @@ def inventario_memoria() -> str:
     return f"Tenho {lembrancas.total()} fatos guardados ({partes})."
 
 
+
+# ---------------------------------------------------------------- cofre
+# O valor de uma senha NUNCA entra no retorno destas funcoes: o retorno vira
+# contexto do modelo, e contexto vaza -- pela resposta, pela voz ou para a
+# memoria de longo prazo, que vai para o Git. O segredo sai pelo canal
+# lateral, direto para a tela do dono.
+def consultar_senha(servico: str) -> str:
+    """Busca uma senha. O valor vai para a tela do dono, nao para a conversa."""
+    if not cofre.existe():
+        return "Ainda nao ha cofre nesta maquina. Crie com: python -m atlas.senhas criar"
+    if not cofre.destrancado():
+        return ("O cofre esta trancado. O dono precisa destrancar com a "
+                "senha-mestra antes.")
+    valor = cofre.revelar(servico)
+    if valor is None:
+        nomes = ", ".join(c["servico"] for c in cofre.listar()) or "nenhum"
+        return f"Nao tenho senha de '{servico}'. Tenho de: {nomes}."
+    cofre.enfileirar_para_o_dono(f"[cofre] {servico}: {valor}")
+    return (f"Achei a senha de {servico} e mostrei direto na tela do dono. "
+            "Eu mesma nao vejo o valor. Confirme que apareceu.")
+
+
+def listar_senhas() -> str:
+    """Quais servicos tem senha guardada. Sem revelar nenhuma."""
+    if not cofre.existe():
+        return "Ainda nao ha cofre nesta maquina."
+    itens = cofre.listar()
+    if not itens:
+        return "O cofre esta vazio."
+    linhas = [f"{c['servico']}" + (f" (usuario {c['usuario']})" if c["usuario"] else "")
+              for c in itens]
+    return f"Tenho {len(itens)} senhas guardadas: " + "; ".join(linhas)
+
+
 # ------------------------------------------------------------------ relatorio
 def relatorio_do_dia() -> str:
     """Resume o dia: o que foi conversado, lembretes abertos, notas novas."""
@@ -314,6 +348,8 @@ REGISTRO: dict[str, Callable[..., str]] = {
     "lembrar": lembrar,
     "recordar": recordar,
     "inventario_memoria": inventario_memoria,
+    "consultar_senha": consultar_senha,
+    "listar_senhas": listar_senhas,
 }
 
 
@@ -369,6 +405,13 @@ ESQUEMAS: list[dict[str, Any]] = [
        {"sobre": {**_S, "description": "Assunto a procurar."},
         "categoria": {**_S, "description": "Filtra por categoria. Opcional."}}, []),
     _f("inventario_memoria", "Quanto a Atlas lembra, por categoria.", {}, []),
+    _f("consultar_senha",
+       "Mostra ao dono a senha de um servico. Use para 'qual a senha do', "
+       "'me da o login de', 'esqueci a senha do'.",
+       {"servico": {**_S, "description": "Nome do servico. Ex: Netflix."}},
+       ["servico"]),
+    _f("listar_senhas", "Diz quais servicos tem senha guardada, sem revelar.",
+       {}, []),
 ]
 
 

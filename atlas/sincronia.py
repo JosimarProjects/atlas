@@ -29,6 +29,11 @@ TABELAS = {
     "lembretes": ("criado", "quando", "texto", "feito"),
     "notas": ("criado", "titulo", "texto"),
     "estado": ("chave", "valor"),
+    # O cofre viaja CIFRADO. O que vai para o JSONL e AES-256-GCM em base64:
+    # sem a senha-mestra -- que nao e gravada em lugar nenhum -- e ruido. E
+    # o que permite reinstalar a Atlas noutra maquina com as senhas juntas.
+    "cofre": ("criado", "alterado", "servico", "usuario", "segredo", "nota"),
+    "cofre_config": ("chave", "valor"),
 }
 
 
@@ -85,6 +90,9 @@ Exportado em {agora}.
 - `falas.jsonl` — historico das conversas, com data.
 - `lembretes.jsonl`, `notas.jsonl` — o que esta pendente e o que foi anotado.
 - `estado.jsonl` — resumo corrente da conversa.
+- `cofre.jsonl` — senhas, **cifradas com AES-256-GCM**. Sem a senha-mestra
+  o conteudo e ruido; por isso pode viajar. Mesmo assim, o repositorio e
+  privado.
 
 ## Restaurar em outro computador
 
