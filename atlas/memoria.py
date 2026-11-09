@@ -109,7 +109,7 @@ class Memoria:
         return [{"role": l["papel"], "content": l["conteudo"]} for l in reversed(linhas)]
 
     # ----------------------------------------------------------- contexto
-    def contexto(self) -> list[dict[str, Any]]:
+    def contexto(self, gancho: str = "") -> list[dict[str, Any]]:
         """Mensagens prontas para mandar ao modelo: sistema + resumo + janela.
 
         O template do Qwen3.5 aceita UMA unica mensagem de sistema e rejeita o
@@ -123,6 +123,20 @@ class Memoria:
         ]
         if self.resumo:
             partes.append(f"O que ja foi conversado antes:\n{self.resumo}")
+
+        # Memoria de longo prazo: o que foi guardado em QUALQUER conversa e
+        # tem a ver com o que esta sendo dito agora. E o que faz a Atlas
+        # lembrar, semanas depois, do filme que voce mandou anotar.
+        if gancho:
+            try:
+                from . import lembrancas
+                achados = lembrancas.buscar(
+                    gancho, limite=config.MEMORIA_FATOS_NO_CONTEXTO)
+                if achados:
+                    partes.append("Da sua memoria de longo prazo:" + chr(10)
+                                  + lembrancas.formatar(achados))
+            except Exception:
+                pass   # memoria e enriquecimento; nunca derruba a conversa
 
         msgs: list[dict[str, Any]] = [
             {"role": "system", "content": "\n\n".join(partes)}

@@ -9,7 +9,11 @@
 # pergunta na mesma GPU passa a ser respondida certo. Veja o README.
 param(
     [int]$Port = 8080,
-    [int]$Ctx = 16384,       # contexto; 16k cabe junto do modelo nos 8 GB
+    # 8k, nao 16k. Com a visao carregada (918 MB) o cache de 16k nao cabia
+    # nos 8 GB e o llama.cpp abortava o offload -- subia tudo na CPU, a 5,9
+    # tok/s em vez de 43. E 8k basta: quem carrega o historico longo agora e
+    # a memoria de longo prazo, que busca e injeta so o que importa.
+    [int]$Ctx = 8192,
     [int]$Gpu = 999,         # todas as camadas na GPU
     [switch]$Rocm,           # usa o build ROCm (nao enumera a placa neste driver)
     [switch]$SemVisao        # nao carrega o projetor de imagem

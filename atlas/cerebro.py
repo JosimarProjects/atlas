@@ -232,7 +232,9 @@ def responder(pergunta: str, memoria: Memoria) -> str:
             break
         observado = resultado
 
-    mensagens = memoria.contexto()
+    # O gancho e a propria pergunta: e por ela que a memoria de longo
+    # prazo decide o que trazer de volta.
+    mensagens = memoria.contexto(gancho=pergunta)
     if observacoes:
         # O template do Qwen3.5 exige que TODO system venha no inicio e levanta
         # "System message must be at the beginning" se houver outro depois --

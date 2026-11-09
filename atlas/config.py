@@ -35,6 +35,16 @@ LLM_TOP_K = 20
 # "simular" o que faria.
 LLM_MAX_TOKENS = 4000
 
+# Servidor de embeddings (EmbeddingGemma 2), separado do cerebro. E ele que
+# da memoria semantica: "Duna 3, ficcao cientifica" vira um vetor, e
+# "quais filmes eu mandei guardar?" acha esse vetor mesmo sem a palavra
+# "filme" aparecer em lugar nenhum.
+EMBED_URL = os.environ.get("ATLAS_EMBED_URL", "http://127.0.0.1:8083/v1")
+
+# Quantos fatos de longo prazo entram no contexto a cada turno. Poucos para
+# nao afogar o prompt; o suficiente para a Atlas lembrar do que importa.
+MEMORIA_FATOS_NO_CONTEXTO = 5
+
 # ---------------------------------------------------------------- ouvido
 # faster-whisper. "small" ja entende portugues bem e cabe na CPU sem roubar
 # VRAM do Qwen; "medium" acerta mais, ao custo de ~1s a mais por fala.

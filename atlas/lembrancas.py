@@ -1,0 +1,251 @@
+"""Memoria de longo prazo da Atlas: fatos que atravessam conversas.
+
+O resumo em `memoria.py` serve a conversa corrente -- ele comprime o que foi
+dito e esquece o resto. Isto aqui e outra coisa: o que o dono mandou guardar,
+ou o que o sistema julgou digno de guardar, permanece para sempre e e
+recuperado quando volta a ser relevante, semanas depois, em outra conversa.
+
+POR QUE BUSCA HIBRIDA
+---------------------
+Voce salva "Duna 3, ficcao cientifica, indicacao do Joao" e semanas depois
+pergunta "quais filmes eu mandei guardar?". Nenhuma palavra bate: nao ha
+"filme" no que foi salvo. Busca por palavra-chave (FTS5) falha nisso, mas e
+imbativel para nome proprio e numero. Busca por vetor acerta o sentido, mas
+erra o termo exato. Usamos as duas e fundimos os resultados.
+"""
+from __future__ import annotations
+
+import json
+import math
+import re
+import struct
+import urllib.error
+import urllib.request
+from datetime import datetime
+from typing import Any
+
+from . import config
+from .memoria import conectar
+
+_ESQUEMA = """
+CREATE TABLE IF NOT EXISTS fatos (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    criado    TEXT NOT NULL,
+    acessado  TEXT,
+    acessos   INTEGER NOT NULL DEFAULT 0,
+    categoria TEXT NOT NULL DEFAULT 'geral',
+    assunto   TEXT NOT NULL,
+    texto     TEXT NOT NULL,
+    motivo    TEXT NOT NULL DEFAULT '',
+    origem    TEXT NOT NULL DEFAULT '',
+    vetor     BLOB
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS fatos_busca
+    USING fts5(assunto, texto, motivo, categoria,
+               content='fatos', content_rowid='id', tokenize='unicode61');
+
+CREATE TRIGGER IF NOT EXISTS fatos_ai AFTER INSERT ON fatos BEGIN
+    INSERT INTO fatos_busca(rowid, assunto, texto, motivo, categoria)
+    VALUES (new.id, new.assunto, new.texto, new.motivo, new.categoria);
+END;
+CREATE TRIGGER IF NOT EXISTS fatos_ad AFTER DELETE ON fatos BEGIN
+    INSERT INTO fatos_busca(fatos_busca, rowid, assunto, texto, motivo, categoria)
+    VALUES ('delete', old.id, old.assunto, old.texto, old.motivo, old.categoria);
+END;
+CREATE TRIGGER IF NOT EXISTS fatos_au AFTER UPDATE ON fatos BEGIN
+    INSERT INTO fatos_busca(fatos_busca, rowid, assunto, texto, motivo, categoria)
+    VALUES ('delete', old.id, old.assunto, old.texto, old.motivo, old.categoria);
+    INSERT INTO fatos_busca(rowid, assunto, texto, motivo, categoria)
+    VALUES (new.id, new.assunto, new.texto, new.motivo, new.categoria);
+END;
+"""
+
+
+def _preparar(con) -> None:
+    con.executescript(_ESQUEMA)
+
+
+def abrir():
+    con = conectar()
+    _preparar(con)
+    return con
+
+
+# ------------------------------------------------------------------ vetores
+def _empacotar(v: list[float]) -> bytes:
+    return struct.pack(f"{len(v)}f", *v)
+
+
+def _desempacotar(b: bytes | None) -> list[float]:
+    if not b:
+        return []
+    return list(struct.unpack(f"{len(b) // 4}f", b))
+
+
+def embutir(texto: str) -> list[float]:
+    """Texto -> vetor, pelo servidor de embeddings. [] se ele estiver fora."""
+    corpo = {"model": "embed", "input": texto[:2000]}
+    req = urllib.request.Request(
+        f"{config.EMBED_URL}/embeddings",
+        data=json.dumps(corpo).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            d = json.load(r)
+        return d["data"][0]["embedding"]
+    except Exception:
+        # Sem embeddings a Atlas nao fica cega: a busca por palavra-chave
+        # continua funcionando sozinha.
+        return []
+
+
+def _cosseno(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    num = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return num / (na * nb) if na and nb else 0.0
+
+
+# ----------------------------------------------------------------- escrita
+def guardar(assunto: str, texto: str, motivo: str = "",
+            categoria: str = "geral", origem: str = "") -> int:
+    """Grava um fato e ja calcula o vetor dele."""
+    con = abrir()
+    vetor = embutir(f"{assunto}. {texto}. {motivo}")
+    cur = con.execute(
+        "INSERT INTO fatos (criado, categoria, assunto, texto, motivo, origem, vetor) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (datetime.now().isoformat(timespec="seconds"), categoria.strip() or "geral",
+         assunto.strip(), texto.strip(), motivo.strip(), origem.strip(),
+         _empacotar(vetor) if vetor else None),
+    )
+    con.commit()
+    return cur.lastrowid
+
+
+def esquecer(id_fato: int) -> bool:
+    con = abrir()
+    cur = con.execute("DELETE FROM fatos WHERE id = ?", (id_fato,))
+    con.commit()
+    return cur.rowcount > 0
+
+
+def revetorizar() -> int:
+    """Calcula o vetor dos fatos salvos enquanto o servidor estava fora."""
+    con = abrir()
+    pendentes = con.execute("SELECT id, assunto, texto, motivo FROM fatos "
+                            "WHERE vetor IS NULL").fetchall()
+    feitos = 0
+    for f in pendentes:
+        v = embutir(f"{f['assunto']}. {f['texto']}. {f['motivo']}")
+        if v:
+            con.execute("UPDATE fatos SET vetor = ? WHERE id = ?",
+                        (_empacotar(v), f["id"]))
+            feitos += 1
+    con.commit()
+    return feitos
+
+
+# ----------------------------------------------------------------- leitura
+_FTS_PROIBIDO = re.compile(r'["\':^*()\-]')
+
+
+def _consulta_fts(texto: str) -> str:
+    """Transforma a pergunta em consulta FTS5 segura (OR entre os termos)."""
+    limpo = _FTS_PROIBIDO.sub(" ", texto)
+    termos = [t for t in limpo.split() if len(t) > 2]
+    return " OR ".join(termos[:12])
+
+
+def buscar(consulta: str, limite: int = 5) -> list[dict[str, Any]]:
+    """Busca hibrida: funde palavra-chave (FTS5) e sentido (vetor).
+
+    A fusao e por posicao, nao por nota: as duas buscas devolvem escalas
+    incomparaveis (BM25 negativo e cosseno de 0 a 1). Somar 1/(60+posicao)
+    de cada lista -- Reciprocal Rank Fusion -- junta as duas sem precisar
+    normalizar nada.
+    """
+    con = abrir()
+    pontos: dict[int, float] = {}
+
+    expr = _consulta_fts(consulta)
+    if expr:
+        try:
+            linhas = con.execute(
+                "SELECT rowid FROM fatos_busca WHERE fatos_busca MATCH ? "
+                "ORDER BY rank LIMIT 20", (expr,)
+            ).fetchall()
+            for pos, l in enumerate(linhas):
+                pontos[l["rowid"]] = pontos.get(l["rowid"], 0) + 1 / (60 + pos)
+        except Exception:
+            pass   # consulta FTS malformada nunca derruba a recuperacao
+
+    v = embutir(consulta)
+    if v:
+        todos = con.execute("SELECT id, vetor FROM fatos "
+                            "WHERE vetor IS NOT NULL").fetchall()
+        notas = [(l["id"], _cosseno(v, _desempacotar(l["vetor"]))) for l in todos]
+        notas.sort(key=lambda x: x[1], reverse=True)
+        for pos, (fid, nota) in enumerate(notas[:20]):
+            if nota < 0.30:      # abaixo disso e ruido, nao parecenca
+                break
+            pontos[fid] = pontos.get(fid, 0) + 1 / (60 + pos)
+
+    if not pontos:
+        return []
+    melhores = sorted(pontos.items(), key=lambda x: x[1], reverse=True)[:limite]
+    ids = [i for i, _ in melhores]
+    marcas = ",".join("?" * len(ids))
+    linhas = con.execute(
+        f"SELECT id, criado, categoria, assunto, texto, motivo, origem "
+        f"FROM fatos WHERE id IN ({marcas})", ids
+    ).fetchall()
+    por_id = {l["id"]: dict(l) for l in linhas}
+
+    # Marca o acesso: fato recuperado com frequencia e fato que importa.
+    con.executemany("UPDATE fatos SET acessos = acessos + 1, acessado = ? "
+                    "WHERE id = ?",
+                    [(datetime.now().isoformat(timespec="seconds"), i) for i in ids])
+    con.commit()
+    return [por_id[i] for i in ids if i in por_id]
+
+
+def listar(categoria: str = "", limite: int = 20) -> list[dict[str, Any]]:
+    con = abrir()
+    if categoria:
+        linhas = con.execute(
+            "SELECT * FROM fatos WHERE categoria = ? ORDER BY id DESC LIMIT ?",
+            (categoria, limite)).fetchall()
+    else:
+        linhas = con.execute(
+            "SELECT * FROM fatos ORDER BY id DESC LIMIT ?", (limite,)).fetchall()
+    return [dict(l) for l in linhas]
+
+
+def categorias() -> list[tuple[str, int]]:
+    con = abrir()
+    return [(l["categoria"], l["n"]) for l in con.execute(
+        "SELECT categoria, COUNT(*) AS n FROM fatos GROUP BY categoria "
+        "ORDER BY n DESC")]
+
+
+def total() -> int:
+    return abrir().execute("SELECT COUNT(*) AS n FROM fatos").fetchone()["n"]
+
+
+def formatar(fatos: list[dict[str, Any]]) -> str:
+    """Fatos -> texto para injetar no contexto do modelo."""
+    if not fatos:
+        return ""
+    linhas = []
+    for f in fatos:
+        quando = (f.get("criado") or "")[:10]
+        linha = f"- [{f['categoria']}] {f['assunto']}: {f['texto']}"
+        if f.get("motivo"):
+            linha += f" (porque: {f['motivo']})"
+        linha += f" — guardado em {quando}"
+        linhas.append(linha)
+    return "\n".join(linhas)
