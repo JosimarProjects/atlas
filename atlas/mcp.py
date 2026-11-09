@@ -45,6 +45,26 @@ PERMITIDAS: dict[str, tuple[str, str, str, bool]] = {
         "Envia um e-mail.", True),
 }
 
+def _ambiente_do_claude(servidor: str) -> dict[str, str]:
+    """Pega as variaveis que o .claude.json ja define para este servidor.
+
+    O workspace-mcp precisa de GOOGLE_OAUTH_CLIENT_ID e CLIENT_SECRET para
+    sequer iniciar o fluxo de autenticacao. Elas ja estao configuradas na
+    maquina, no .claude.json -- repassa-las e melhor do que pedir ao dono
+    que configure a mesma coisa duas vezes, e evita copiar segredo para
+    dentro deste repositorio.
+    """
+    import json
+    from pathlib import Path as _P
+
+    try:
+        conf = json.loads((_P.home() / ".claude.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    entrada = (conf.get("mcpServers") or {}).get(servidor) or {}
+    return {k: str(v) for k, v in (entrada.get("env") or {}).items()}
+
+
 # Como subir cada servidor. Os caminhos saem do .claude.json do dono.
 SERVIDORES: dict[str, list[str]] = {
     "google-workspace": [
@@ -88,10 +108,14 @@ class Servidor:
     def _subir(self) -> None:
         if self.proc and self.proc.poll() is None:
             return
+        import os
+        ambiente = {**os.environ, **_ambiente_do_claude(self.nome)}
         self.proc = subprocess.Popen(
-            [_executavel(self.nome) or self.comando[0], *self.comando[1:]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [_executavel(self.nome) or self.comando[0], *self.comando[1:]],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
-            bufsize=1, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            bufsize=1, env=ambiente,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self._rpc("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
