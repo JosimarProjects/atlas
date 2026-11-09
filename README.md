@@ -54,6 +54,10 @@ atlas> - [filmes] Duna 3: João falou que é melhor que o segundo
          (porque: quer ver o filme) — guardado em 08/11
 ```
 
+**Apagar usa critério literal, não semântico.** Pedir para apagar *"saúde"* chegou a remover a intolerância à lactose, a alergia à dipirona **e** a série Silo — a busca semântica ordena por parecença e sempre devolve algo, então os três fatos existentes vieram e os três foram apagados.
+
+> Parecença serve para **recuperar**, onde um resultado a mais é inofensivo. Para **apagar**, é destruição. Hoje casa quem contém o termo no assunto, no texto ou na categoria; acima de três registros, ela recusa e pede que você escolha.
+
 **Apagar tem dois caminhos.** Pela conversa (*"esquece o filme Duna 3"*) ou pelo **&times;** no cartão da memória, na interface. O segundo não passa pelo modelo: a interface manda o id e o Python apaga.
 
 > Esse botão existe por causa de um erro real. A ferramenta de apagar **não existia**, e quando pedi para remover dois filmes o modelo respondeu que tinha removido — sem ter como. Capacidade que não existe vira alucinação confiante, e é exatamente o que este projeto tenta evitar. Agora a ferramenta existe, e o caminho determinístico também.

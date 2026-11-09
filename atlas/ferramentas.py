@@ -272,23 +272,40 @@ def recordar(sobre: str = "", categoria: str = "") -> str:
 
 
 def esquecer_memoria(sobre: str) -> str:
-    """Apaga da memoria permanente o que casar com `sobre`.
+    """Apaga da memoria permanente -- so o que casar de verdade.
 
-    Esta ferramenta faltava, e a ausencia dela produziu o pior tipo de erro:
-    pedido para apagar dois filmes, o modelo respondeu que tinha apagado --
-    sem ter como. Capacidade que nao existe vira alucinacao confiante.
+    Aqui NAO se usa a busca semantica. Ela ordena por parecenca e sempre
+    devolve algo: pedindo para apagar "saude", veio a intolerancia a lactose,
+    a alergia a dipirona E a serie Silo, porque eram os tres fatos existentes.
+    Os tres foram apagados. Parecenca serve para recuperar, onde um resultado
+    a mais e inofensivo; para apagar, e destruicao.
+
+    Entao o criterio aqui e literal: casa quem contem o termo no assunto, no
+    texto ou na categoria. Nada de aproximacao.
     """
-    achados = lembrancas.buscar(sobre, limite=10)
-    if not achados:
-        return f"Nao achei nada guardado sobre '{sobre}'."
-    # Teto de seguranca: apagar memoria nao tem volta, e uma busca vaga nao
-    # pode varrer tudo. Acima disso, o dono escolhe pela interface.
-    if len(achados) > 5:
-        nomes = "; ".join(f["assunto"] for f in achados[:5])
-        return (f"Encontrei {len(achados)} registros sobre '{sobre}' — "
-                f"muitos para apagar de uma vez. Os primeiros sao: {nomes}. "
-                "Peca de forma mais especifica.")
-    apagados = [f["assunto"] for f in achados if lembrancas.esquecer(f["id"])]
+    alvo = sobre.strip().lower()
+    if len(alvo) < 3:
+        return "Diga melhor o que apagar."
+
+    candidatos = [
+        f for f in lembrancas.listar(limite=500)
+        if alvo in f["assunto"].lower()
+        or alvo in f["texto"].lower()
+        or alvo == f["categoria"].lower()
+    ]
+    if not candidatos:
+        return (f"Nao achei nada guardado com '{sobre}'. "
+                "Use o X no cartao da memoria para escolher na mao.")
+
+    # Mais de tres, o dono escolhe: apagar em lote pelo que o modelo
+    # entendeu de uma frase e como deixar uma faca em cima da mesa.
+    if len(candidatos) > 3:
+        nomes = "; ".join(f["assunto"] for f in candidatos[:6])
+        return (f"'{sobre}' casa com {len(candidatos)} registros ({nomes}...). "
+                "Sao muitos para apagar de uma vez -- diga qual, ou use o X "
+                "no cartao de cada um.")
+
+    apagados = [f["assunto"] for f in candidatos if lembrancas.esquecer(f["id"])]
     if not apagados:
         return "Nao consegui apagar."
     return f"Apaguei da memoria: {'; '.join(apagados)}."
