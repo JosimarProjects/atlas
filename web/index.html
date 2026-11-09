@@ -140,6 +140,24 @@
   .fato:hover .x{opacity:1}
   .fato .x:hover{background:rgba(248,113,113,.15);color:var(--vermelho)}
 
+  .sobre{padding:0 14px 10px;border-bottom:1px solid var(--borda);margin-bottom:8px}
+  .sobre textarea{
+    width:100%;background:var(--painel2);border:1px solid var(--borda);
+    border-radius:9px;color:var(--texto);font:inherit;font-size:12.5px;
+    padding:8px 10px;resize:none;outline:none;min-height:54px
+  }
+  .sobre textarea:focus{border-color:var(--roxo)}
+  .sobre .ok{
+    width:100%;margin-top:6px;padding:7px;border-radius:8px;border:none;
+    background:var(--roxo);color:#fff;font:inherit;font-size:12.5px;cursor:pointer
+  }
+  .sobre .ok:hover{background:var(--roxo2)}
+  .sobre .ajuda{font-size:11px;color:var(--tenue);margin:6px 2px 0;line-height:1.45}
+  .fato .aut{
+    display:inline-block;font-size:9px;color:var(--tenue);
+    border:1px solid var(--borda);border-radius:4px;padding:0 4px;margin-left:5px
+  }
+
   /* ------------------------------------------------------------ conversa */
   main{flex:1;display:flex;flex-direction:column;min-width:0}
   header{
@@ -325,7 +343,18 @@
     </div>
   </div>
   <div class="convs" id="convs"></div>
-  <div class="fatos" id="fatos" style="display:none"></div>
+  <div class="fatos" id="fatos" style="display:none">
+    <div class="sobre">
+      <textarea id="sobreMim" rows="2"
+        placeholder="Conte algo sobre você… ex: sou desenvolvedor, moro em Ribeirão Pires, tenho intolerância a lactose"></textarea>
+      <button class="ok" onclick="contarSobreMim()">Guardar sobre mim</button>
+      <div class="ajuda">
+        Ela também aprende sozinha: o que você mencionar de passagem e for
+        durador vira memória, sem precisar pedir.
+      </div>
+    </div>
+    <div id="listaFatos"></div>
+  </div>
 
   <div class="secao" style="border-top:1px solid var(--borda)">
     <div class="linha" style="padding:4px 10px">
@@ -575,6 +604,15 @@ async function enviar(){
   }
 }
 
+async function contarSobreMim(){
+  const campo = document.getElementById('sobreMim');
+  const texto = campo.value.trim();
+  if (!texto) return;
+  campo.value = '';
+  await api('/api/sobre-mim-add', {method: 'POST', body: JSON.stringify({texto})});
+  fatos(); estado();
+}
+
 /* -------------------------------------------------------- confirmacao */
 /* Acao com efeito fora da maquina nunca sai sozinha. O modelo monta o
    pedido; quem aprova e o dono, vendo destinatario e texto. Se a ordem veio
@@ -687,6 +725,18 @@ async function gravar(){
 }
 
 /* --------------------------------------------------------------- estado */
+let avisouToken = false;
+function avisarToken(){
+  // Sem isto o 401 virava "undefined" em todos os campos, e nao havia
+  // como adivinhar que o problema era o link antigo.
+  if (avisouToken) return;
+  avisouToken = true;
+  document.getElementById('vCerebro').textContent = 'link expirado';
+  bolha('ela erro',
+    'Este link nao vale mais — o token mudou. Abra o endereco novo que aparece '
+    + 'no terminal onde a Atlas subiu, ou rode: python -m atlas.web --rede --senha');
+}
+
 function marcar(id, ligado, meio){
   const p = document.getElementById(id);
   p.className = 'ponto ' + (meio ? 'meio' : ligado ? 'on' : 'off');
@@ -694,7 +744,9 @@ function marcar(id, ligado, meio){
 
 async function estado(){
   try {
-    const d = await (await api('/api/estado')).json();
+    const r = await api('/api/estado');
+    if (r.status === 401){ avisarToken(); return; }
+    const d = await r.json();
     marcar('pCerebro', d.cerebro);
     document.getElementById('vCerebro').textContent = d.cerebro ? 'no ar' : 'desligado';
     marcar('pMemoria', d.memoria_semantica);
@@ -715,10 +767,11 @@ async function estado(){
 
 async function fatos(){
   try {
-    const d = await (await api('/api/memoria')).json();
-    const alvo = document.getElementById('fatos');
+    const d = await (await api('/api/sobre-mim')).json();
+    const alvo = document.getElementById('listaFatos');
     alvo.innerHTML = '';
-    for (const f of (d.fatos || []).slice(0, 25)){
+    document.getElementById('nFatos').textContent = d.total || 0;
+    for (const f of (d.fatos || []).slice(0, 60)){
       const e = document.createElement('div');
       e.className = 'fato';
       e.innerHTML = `<button class="x" title="Esquecer">&times;</button>
@@ -729,6 +782,11 @@ async function fatos(){
       e.querySelector('.as').textContent = f.assunto || '';
       e.querySelector('.tx').textContent = f.texto || '';
       e.querySelector('.mo').textContent = f.motivo ? 'porque: ' + f.motivo : '';
+      if (f.acessos > 2){
+        const a = document.createElement('span');
+        a.className = 'aut'; a.textContent = f.acessos + 'x usado';
+        e.querySelector('.cat').after(a);
+      }
       alvo.appendChild(e);
     }
   } catch (e) {}

@@ -98,6 +98,27 @@ O navegador grava em WebM/Opus, que o Whisper não lê — o `ffmpeg` converte p
 
 > **O microfone só funciona em HTTPS ou localhost.** É regra do navegador, não da Atlas. No endereço da rede local (`http://192.168…`) ele recusa sem explicar — use o link do túnel, que é HTTPS. A interface detecta esse caso e avisa.
 
+
+## Ela aprende sozinha
+
+Guardar só o que foi pedido torna a memória pobre — **o que importa quase nunca vem anunciado**. Ninguém diz *"guarde que eu trabalho na Flipnet"*; diz *"preciso resolver antes da reunião da Flipnet"*, e o fato está ali de passagem.
+
+Depois de cada turno, uma segunda passagem curta olha o que foi dito e pergunta: apareceu algo durador sobre o dono? Roda em outra thread — você não espera por ela.
+
+**O difícil é não guardar.** Um extrator ingênuo vira depósito de lixo: guarda *"o dono perguntou as horas"*, guarda a mesma coisa cinco vezes. Três defesas:
+
+1. **Instrução por exemplos, não por regras** — num 9B, mostrar pares funciona muito melhor que *"guarde X, não guarde Y"*
+2. **Nada de efêmero** — fato que caduca em uma semana é conversa, não memória
+3. **Deduplicação semântica** — se já existe algo com cosseno ≥ 0,86, o novo é descartado
+
+Medido: *"não consigo tomar leite"* → guardou em **saúde**. *"que horas são?"* → nada. Mas *"reunião da Flipnet"* **não** virou "trabalha na Flipnet" — a inferência indireta ainda escapa. Para esses, o painel abaixo.
+
+### Contar direto
+
+Na aba **Memória** há um campo onde você escreve o que quer que ela saiba. Esse caminho **não passa pelo modelo**: o que você digitou é o que fica guardado, sem reinterpretação.
+
+Cada fato mostra quantas vezes já foi recuperado — fato usado com frequência é fato que importa.
+
 ---
 
 ## Cofre de senhas: o modelo nunca vê o valor

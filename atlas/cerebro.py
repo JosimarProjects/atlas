@@ -265,6 +265,7 @@ def responder(pergunta: str, memoria: Memoria) -> str:
             return dados
         memoria.registrar("assistant", texto)
         _talvez_resumir(memoria)
+        _aprender(pergunta, texto)
         return texto
 
     if _derivou_idioma(texto):
@@ -284,7 +285,25 @@ def responder(pergunta: str, memoria: Memoria) -> str:
 
     memoria.registrar("assistant", texto)
     _talvez_resumir(memoria)
+    _aprender(pergunta, texto)
     return texto
+
+
+def _aprender(pergunta: str, resposta: str) -> None:
+    """Deixa a memoria crescer sozinha, sem o dono mandar guardar.
+
+    O que importa quase nunca vem anunciado: ninguem diz "guarde que eu
+    trabalho na Flipnet", diz "antes da reuniao da Flipnet". Roda em outra
+    thread porque custa uma geracao -- sincrono somaria segundos a cada
+    resposta.
+    """
+    if not config.APRENDER_SOZINHA or len(pergunta) < 12:
+        return
+    try:
+        from . import aprendizado
+        aprendizado.extrair_em_segundo_plano(pergunta, resposta)
+    except Exception:
+        pass   # aprender e bonus; nunca derruba a conversa
 
 
 def _talvez_resumir(memoria: Memoria) -> None:

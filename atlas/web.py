@@ -113,6 +113,15 @@ class Atendente(BaseHTTPRequestHandler):
                 eid = lista[0]["id"] if lista else 0
             return self._json({"espaco": eid,
                                "conversas": espacos.listar_conversas(eid)})
+        if rota == "/api/sobre-mim":
+            # O que a Atlas sabe do dono, do mais acessado para o menos:
+            # fato recuperado com frequencia e fato que importa.
+            con = conectar()
+            linhas = con.execute(
+                "SELECT id, criado, categoria, assunto, texto, motivo, acessos "
+                "FROM fatos ORDER BY acessos DESC, id DESC LIMIT 200").fetchall()
+            return self._json({"fatos": [dict(l) for l in linhas],
+                               "total": lembrancas.total()})
         if rota == "/api/pendentes":
             return self._json({"pedidos": confirmacao.listar()})
         if rota == "/api/audio-pronto":
@@ -178,6 +187,19 @@ class Atendente(BaseHTTPRequestHandler):
                     _mem(cid).esquecer_tudo()
                     _memorias.pop(cid, None)
             return self._json({"ok": bool(cid)})
+
+        if rota == "/api/sobre-mim-add":
+            c = self._corpo()
+            texto = (c.get("texto") or "").strip()
+            if not texto:
+                return self._json({"erro": "texto vazio"}, 400)
+            # O dono escrevendo direto: nao passa pelo modelo, nao pode ser
+            # reinterpretado, e fica igual ao que ele digitou.
+            fid = lembrancas.guardar(
+                (c.get("assunto") or texto[:40]).strip(), texto,
+                (c.get("motivo") or "o dono contou").strip(),
+                (c.get("categoria") or "pessoa").strip(), "sobre-mim")
+            return self._json({"id": fid})
 
         # ------------------------------------------------ confirmacao
         if rota == "/api/confirmar":
@@ -352,11 +374,22 @@ def main() -> int:
                     help="aceita conexoes de outras maquinas da rede local")
     ap.add_argument("--senha", action="store_true",
                     help="exige um token (impresso na subida)")
+    ap.add_argument("--novo-token", action="store_true",
+                    help="sorteia um token novo, invalidando os links antigos")
     a = ap.parse_args()
 
     endereco = "0.0.0.0" if a.rede else "127.0.0.1"
     if a.senha:
-        TOKEN = secrets.token_urlsafe(12)
+        # O token fica em disco e sobrevive ao reinicio. Antes era sorteado
+        # a cada subida: o link que voce tinha no celular parava de valer, e
+        # a interface mostrava "undefined" em todo canto em vez de dizer que
+        # o token expirou. Use --novo-token para trocar de proposito.
+        guardado = config.DADOS / "token.txt"
+        if a.novo_token or not guardado.exists():
+            TOKEN = secrets.token_urlsafe(12)
+            guardado.write_text(TOKEN, encoding="utf-8")
+        else:
+            TOKEN = guardado.read_text(encoding="utf-8").strip()
 
     servidor = ThreadingHTTPServer((endereco, a.porta), Atendente)
     print(f"Atlas web em http://127.0.0.1:{a.porta}")

@@ -45,6 +45,11 @@ EMBED_URL = os.environ.get("ATLAS_EMBED_URL", "http://127.0.0.1:8083/v1")
 # nao afogar o prompt; o suficiente para a Atlas lembrar do que importa.
 MEMORIA_FATOS_NO_CONTEXTO = 5
 
+# A Atlas observa cada turno e guarda o que for durador sobre o dono,
+# sem esperar um pedido. E o que faz ela ficar mais afiada com o tempo
+# em vez de so acumular o que foi mandado guardar.
+APRENDER_SOZINHA = os.environ.get("ATLAS_APRENDER", "1") != "0"
+
 # ---------------------------------------------------------------- ouvido
 # faster-whisper. "small" ja entende portugues bem e cabe na CPU sem roubar
 # VRAM do Qwen; "medium" acerta mais, ao custo de ~1s a mais por fala.
