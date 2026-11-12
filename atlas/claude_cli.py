@@ -99,9 +99,15 @@ def chamar(mensagens: list[dict[str, Any]],
     # argumento -- prompt de sistema, resumo, memoria e historico -- a chamada
     # passava de 60 s e estourava, enquanto a mesma pergunta isolada levava
     # 3 s. Linha de comando do Windows nao foi feita para carregar isso.
+    # O sistema tambem vai por stdin, junto do corpo. Deixa-lo em
+    # --append-system-prompt mantinha o problema pela metade: a memoria de
+    # longo prazo e injetada NO prompt de sistema, entao perguntar "o que
+    # voce sabe sobre mim" voltava a passar de 40 s enquanto um "oi" levava
+    # 3 s. O argumento era o gargalo, nao o conteudo.
     args = [exe, "-p", "--output-format", "json", *_SEM_FERRAMENTAS]
     if sistema:
-        args += ["--append-system-prompt", sistema]
+        corpo = sistema + chr(10) + chr(10) + "---" + chr(10) + chr(10) + corpo
+
 
     try:
         r = subprocess.run(

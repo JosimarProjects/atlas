@@ -22,6 +22,7 @@ import struct
 import urllib.error
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from . import config
@@ -175,6 +176,60 @@ def limpar_vencidos() -> int:
                       (hoje,))
     con.commit()
     return cur.rowcount
+
+
+def arquivar_tudo(motivo: str = "") -> int:
+    """Esvazia a memoria viva, mas guarda uma copia antes.
+
+    Existe porque eu apaguei a memoria do dono tres vezes durante testes,
+    com um DELETE direto, e nao havia de onde tirar de volta. Agora nada sai
+    sem deixar copia.
+    """
+    import json as _json
+    from . import config
+
+    fatos = listar(limite=10000)
+    if not fatos:
+        return 0
+    pasta = config.DADOS / "memoria-apagada"
+    pasta.mkdir(parents=True, exist_ok=True)
+    carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
+    destino = pasta / f"{carimbo}.jsonl"
+    with open(destino, "w", encoding="utf-8") as f:
+        if motivo:
+            f.write(_json.dumps({"_motivo": motivo}, ensure_ascii=False) + chr(10))
+        for x in fatos:
+            f.write(_json.dumps(x, ensure_ascii=False) + chr(10))
+    con = abrir()
+    con.execute("DELETE FROM fatos")
+    con.commit()
+    return len(fatos)
+
+
+def restaurar(arquivo: str = "") -> int:
+    """Traz de volta a copia mais recente (ou a indicada)."""
+    import json as _json
+    from . import config
+
+    pasta = config.DADOS / "memoria-apagada"
+    if not pasta.exists():
+        return 0
+    alvo = Path(arquivo) if arquivo else max(
+        pasta.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, default=None)
+    if not alvo or not alvo.exists():
+        return 0
+    voltaram = 0
+    for linha in alvo.read_text(encoding="utf-8").splitlines():
+        if not linha.strip():
+            continue
+        d = _json.loads(linha)
+        if "_motivo" in d:
+            continue
+        guardar(d.get("assunto", ""), d.get("texto", ""), d.get("motivo", ""),
+                d.get("categoria", "geral"), d.get("origem", ""),
+                d.get("expira") or "")
+        voltaram += 1
+    return voltaram
 
 
 def esquecer(id_fato: int) -> bool:
