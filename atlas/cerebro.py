@@ -53,6 +53,33 @@ def motor_atual() -> str:
         return MOTOR_LOCAL
 
 
+def pensamento_longo() -> bool:
+    """O Qwen deve raciocinar antes de responder?
+
+    Desligar era perigoso quando o proprio modelo escolhia ferramenta: sem
+    raciocinio ele parava de chamar e passava a narrar o que faria. Hoje
+    quem escolhe e o roteador, numa chamada separada e com gramatica -- a
+    resposta final pode prescindir do raciocinio, e fica bem mais rapida.
+    """
+    try:
+        from .memoria import conectar
+        l = conectar().execute(
+            "SELECT valor FROM estado WHERE chave = 'pensamento'").fetchone()
+        return (l["valor"] if l else "longo") == "longo"
+    except Exception:
+        return True
+
+
+def trocar_pensamento(longo: bool) -> bool:
+    from .memoria import conectar
+    con = conectar()
+    con.execute("INSERT INTO estado (chave, valor) VALUES ('pensamento', ?) "
+                "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+                ("longo" if longo else "curto",))
+    con.commit()
+    return longo
+
+
 def trocar_motor(qual: str) -> str:
     from .memoria import conectar
     alvo = MOTOR_CLAUDE if qual == MOTOR_CLAUDE else MOTOR_LOCAL
@@ -324,7 +351,11 @@ def responder(pergunta: str, memoria: Memoria) -> str:
             + "\n".join(observacoes),
         }
 
-    texto = _limpar(_chamar(mensagens))
+    # Com pensamento curto o Qwen responde direto: perde profundidade, ganha
+    # muitos segundos. So vale para o local -- o Claude nao expoe essa chave.
+    curto = (motor_atual() == MOTOR_LOCAL and not pensamento_longo())
+    texto = _limpar(_chamar(mensagens, pensar=not curto,
+                            max_tokens=800 if curto else None))
 
     if not texto:
         # O modelo gastou o orcamento inteiro raciocinando e nao sobrou

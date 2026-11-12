@@ -60,6 +60,21 @@ CLAUDE  (3 s)  "...governou de 1831 a 1889 e foi deposto
 
 Doze vezes mais rápido e factualmente certo. É honesto dizer: **boa parte da engenharia deste projeto é andaime para compensar o modelo local** — a trava anti-alucinação, o roteador com gramática, a coerção de tipos, o detector de deriva de idioma. Com Claude, nada disso seria necessário.
 
+### Pensar antes de responder
+
+Uma chave na lateral, só para o Local. O Qwen3.5 raciocina antes de responder, e isso custa quase todo o tempo da resposta:
+
+```
+LONGO  74 s  "Santos Dumont foi um inventor e aeronauta brasileiro,
+              conhecido como o pai da aviação..."
+CURTO   3 s  "Santos Dumont foi um inventor e aeronauta brasileiro,
+              conhecido como o pai da aviação..."
+```
+
+Vinte e cinco vezes mais rápido, resposta praticamente igual. Vale ligar o pensamento quando a pergunta exigir raciocínio de verdade — contas, comparações, decisões — e deixar desligado para o dia a dia.
+
+> **Isso só ficou seguro depois que o roteador saiu do caminho.** Enquanto o próprio modelo escolhia ferramenta, desligar o raciocínio fazia ele parar de chamar e passar a *narrar* o que faria. Hoje quem escolhe é uma chamada separada com gramática, e a resposta final pode prescindir do raciocínio.
+
 **Cada resposta diz quem respondeu** — um selo `Claude` ou `Local` ao lado da hora. Sem isso não há como saber se a troca pegou, e pior: quando o Claude falha e ela cai para o local, a resposta parece do Claude e a conclusão vira *"a chave não funciona"*.
 
 **O roteador é sempre local**, mesmo com o Claude ligado. Escolher ferramenta é decisão mecânica que o Qwen resolve em 1 s com a gramática BNF garantindo a forma — mandar isso para o modelo caro seria desperdício de tempo e de cota. O Claude entra onde a qualidade da resposta importa.

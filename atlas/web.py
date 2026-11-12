@@ -387,6 +387,10 @@ class Atendente(BaseHTTPRequestHandler):
             return self._json({"motor": novo,
                                "ok": novo == qual or not qual})
 
+        if rota == "/api/pensamento":
+            longo = bool(self._corpo().get("longo"))
+            return self._json({"longo": cerebro.trocar_pensamento(longo)})
+
         if rota == "/api/visao":
             # Ligar ou desligar a visao exige reiniciar o cerebro: o projetor
             # de imagem e carregado na subida do llama-server, e ocupa 918 MB
@@ -522,6 +526,7 @@ def _estado_atual() -> dict[str, Any]:
             "lembretes": pendentes,
             "ferramentas": len(ferramentas.ESQUEMAS),
             "motor": cerebro.motor_atual(),
+            "pensamento_longo": cerebro.pensamento_longo(),
             "claude_disponivel": _tem_claude(),
             "avisos": len(agenda_propria.listar()),
             "dono": config.DONO,

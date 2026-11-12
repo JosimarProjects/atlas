@@ -407,6 +407,14 @@
         <b>Claude</b><span>melhor · usa sua assinatura</span>
       </div>
     </div>
+    <div class="linha" id="linhaPensamento" style="padding:7px 4px 0">
+      <span style="font-size:12.5px">Pensar antes de responder</span>
+      <label class="chave"><input type="checkbox" id="pensamento"><span class="trilho"></span></label>
+    </div>
+    <div class="dica" style="text-align:left;margin:2px 4px 0;font-size:11px">
+      Só vale no Local. Ligado é mais cuidadoso; desligado responde em
+      segundos em vez de meio minuto.
+    </div>
   </div>
 
   <div class="secao">
@@ -1054,6 +1062,11 @@ async function estado(){
     if (typeof d.avisos === 'number')
       document.getElementById('nAvisos').textContent = d.avisos;
     if (d.motor) pintarMotor(d.motor);
+    const pens = document.getElementById('pensamento');
+    if (!pens.dataset.mexendo) pens.checked = !!d.pensamento_longo;
+    // So faz diferenca no local; com o Claude o controle fica apagado.
+    document.getElementById('linhaPensamento').style.opacity =
+      d.motor === 'claude' ? '.4' : '1';
     document.getElementById('motorClaude').classList.toggle(
       'indisponivel', !d.claude_disponivel);
     const v = document.getElementById('visao');
@@ -1125,6 +1138,15 @@ function pintarMotor(qual){
 }
 
 /* ----------------------------------------------------------- modo visual */
+document.getElementById('pensamento').addEventListener('change', async (ev) => {
+  const longo = ev.target.checked;
+  try {
+    const d = await (await api('/api/pensamento', {
+      method: 'POST', body: JSON.stringify({longo})})).json();
+    ev.target.checked = !!d.longo;
+  } catch (e) { ev.target.checked = !longo; }
+});
+
 document.getElementById('visao').addEventListener('change', async (ev) => {
   const chave = document.getElementById('chaveVisao');
   const rotulo = document.getElementById('rotuloVisao');
