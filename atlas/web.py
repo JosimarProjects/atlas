@@ -36,6 +36,19 @@ PASTA_WEB = config.RAIZ / "web"
 # Uma conversa por vez: a Atlas e pessoal, nao multiusuario. O lock evita
 # que duas abas abertas embaralhem a memoria uma da outra.
 _vez = threading.Lock()
+
+# Conversas em andamento: numero -> {pronto, resposta, erro, ...}. Ficam em
+# memoria porque so interessam ate o navegador buscar o resultado.
+_trabalhos: dict[int, dict[str, Any]] = {}
+_proximo = [0]
+_VIDA_TRABALHO_S = 1800   # meia hora depois de lido, some da memoria
+
+
+def _limpar_trabalhos() -> None:
+    agora = time.time()
+    for n in [n for n, t in _trabalhos.items()
+              if t.get("lido") and agora - t["lido"] > _VIDA_TRABALHO_S]:
+        _trabalhos.pop(n, None)
 # Uma Memoria por conversa, reaproveitada entre pedidos: abrir conexao e
 # reler o resumo a cada turno seria desperdicio.
 _memorias: dict[int, Memoria] = {}
@@ -127,6 +140,31 @@ class Atendente(BaseHTTPRequestHandler):
             return self._json({"avisos": agenda_propria.recolher_da_tela(),
                                "agendados": [agenda_propria.descrever(a)
                                              for a in agenda_propria.listar()]})
+        if rota == "/api/trabalhos":
+            # O que esta sendo processado agora nesta conversa. E por aqui
+            # que a interface, ao reabrir, descobre que ha resposta a
+            # caminho em vez de mostrar a conversa parada.
+            q = parse_qs(urlparse(self.path).query)
+            cid = int(q.get("conversa", ["0"])[0] or 0)
+            emcurso = [{"id": n, "pronto": t["pronto"]}
+                       for n, t in _trabalhos.items()
+                       if t.get("conversa") == cid]
+            return self._json({"trabalhos": emcurso})
+        if rota == "/api/resposta":
+            # O navegador pergunta aqui se ja ficou pronto. Requisicao curta:
+            # nenhuma rede movel nem tunel derruba.
+            q = parse_qs(urlparse(self.path).query)
+            numero = int(q.get("id", ["0"])[0] or 0)
+            t = _trabalhos.get(numero)
+            if t is None:
+                return self._json({"erro": "trabalho desconhecido"}, 404)
+            if not t["pronto"]:
+                return self._json({"pronto": False})
+            # Nao apaga ao ler: se o dono fechou o navegador e voltou, ou
+            # abriu noutra aba, o resultado precisa continuar ali. A limpeza
+            # e por idade, logo abaixo.
+            t["lido"] = time.time()
+            return self._json({**t, "pronto": True})
         if rota == "/api/pendentes":
             return self._json({"pedidos": confirmacao.listar()})
         if rota == "/api/audio-pronto":
@@ -163,19 +201,33 @@ class Atendente(BaseHTTPRequestHandler):
             if not cid:
                 lista = espacos.listar_espacos()
                 cid = espacos.conversa_atual(lista[0]["id"])
-            with _vez:
+
+            _limpar_trabalhos()
+            _proximo[0] += 1
+            numero = _proximo[0]
+            _trabalhos[numero] = {"pronto": False, "conversa": cid}
+
+            def trabalhar():
                 try:
-                    resposta = cerebro.responder(pergunta, _mem(cid))
+                    with _vez:
+                        resposta = cerebro.responder(pergunta, _mem(cid))
+                        # O cofre escreve aqui o que so o dono pode ver. Nao
+                        # passou pelo modelo nem esta na memoria.
+                        reservado = cofre.recolher_para_o_dono()
+                        titulo = espacos.titular_pela_primeira_fala(cid)
+                    _trabalhos[numero].update({
+                        "pronto": True, "resposta": resposta,
+                        "reservado": reservado, "titulo": titulo,
+                        "pendentes": confirmacao.listar(),
+                        "quando": datetime.now().isoformat(timespec="seconds")})
                 except cerebro.CerebroIndisponivel as e:
-                    return self._json({"erro": str(e)}, 503)
-                # O cofre escreve aqui o que so o dono pode ver. Nao passou
-                # pelo modelo e nao esta na memoria -- vai direto para a tela.
-                reservado = cofre.recolher_para_o_dono()
-                titulo = espacos.titular_pela_primeira_fala(cid)
-            return self._json({"resposta": resposta, "reservado": reservado,
-                               "pendentes": confirmacao.listar(),
-                               "conversa": cid, "titulo": titulo,
-                               "quando": datetime.now().isoformat(timespec="seconds")})
+                    _trabalhos[numero].update({"pronto": True, "erro": str(e)})
+                except Exception as e:
+                    _trabalhos[numero].update(
+                        {"pronto": True, "erro": f"{type(e).__name__}: {e}"})
+
+            threading.Thread(target=trabalhar, daemon=True).start()
+            return self._json({"trabalho": numero, "conversa": cid})
 
         if rota == "/api/esquecer-fato":
             # Caminho deterministico: a interface manda o id e o Python apaga.

@@ -221,6 +221,19 @@ Chat com o estado ao vivo na lateral: cérebro, memória semântica, cofre, velo
 
 **O modo visual é um interruptor.** Ligar a leitura de imagens exige reiniciar o cérebro, porque o projetor é carregado na subida e ocupa 918 MB — com ele, o modelo não cabe na placa. Então a interface faz isso por você, e avisa se não couber.
 
+
+### A conversa não segura a conexão
+
+A Atlas leva de 40 a 90 segundos para responder — raciocínio, roteamento de ferramenta, às vezes uma busca na web. Segurar a conexão HTTP aberta esse tempo **funciona no PC e falha no celular**: o túnel da Cloudflare corta, a rede móvel troca de antena, e o único sinal é *"não consegui falar com a Atlas"*.
+
+```
+POST /api/conversar   →  {"trabalho": 7}        em 0,04 s
+GET  /api/resposta?id=7 →  {"pronto": false}     a cada 2 s
+                        →  {"pronto": true, ...}
+```
+
+O trabalho roda numa thread no servidor. **Fechar o navegador não cancela nada** — ao voltar, `/api/trabalhos` reencontra o que está em curso e a interface volta a esperar como se nunca tivesse saído. E a resposta não some na primeira leitura: outra aba, ou a mesma recarregada, continua achando.
+
 ### De outro computador
 
 ```powershell

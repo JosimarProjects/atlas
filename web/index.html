@@ -590,6 +590,44 @@ async function abrirConversa(id){
   document.getElementById('fio').innerHTML = '';
   for (const f of d.falas) bolha(f.papel === 'user' ? 'eu' : 'ela', f.conteudo);
   carregarConversas();
+  retomar(id);
+}
+
+/* A Atlas segue pensando mesmo com o navegador fechado -- o trabalho roda
+   no servidor. Ao voltar, em vez de mostrar a conversa parada, reencontra o
+   que esta em curso e espera o resultado como se nunca tivesse saido. */
+async function retomar(conversaId){
+  try {
+    const d = await (await api('/api/trabalhos?conversa=' + conversaId)).json();
+    const emcurso = (d.trabalhos || []).filter(t => !t.pronto);
+    if (!emcurso.length) return;
+    const esperando = digitando();
+    ocupado = true;
+    document.getElementById('btn').disabled = true;
+    document.getElementById('orbe').classList.add('pensando');
+    for (let i = 0; i < 300; i++){
+      await new Promise(f => setTimeout(f, 2000));
+      let passo;
+      try {
+        passo = await (await api('/api/resposta?id=' + emcurso[0].id)).json();
+      } catch (e) { continue; }
+      if (passo.pronto){
+        esperando.remove();
+        if (passo.erro) bolha('ela erro', passo.erro);
+        else {
+          const el = bolha('ela', passo.resposta || '(sem resposta)', passo.reservado);
+          adicionarBotaoFalar(el, passo.resposta);
+          for (const p of (passo.pendentes || [])) cartaoPedido(p);
+        }
+        break;
+      }
+    }
+    esperando.remove();
+  } catch (e) {} finally {
+    ocupado = false;
+    document.getElementById('btn').disabled = false;
+    document.getElementById('orbe').classList.remove('pensando');
+  }
 }
 
 /* ------------------------------------------------------------- conversa */
@@ -654,14 +692,30 @@ async function enviar(){
   const esperando = digitando();
 
   try {
-    const r = await api('/api/conversar', {
+    const inicio = await (await api('/api/conversar', {
       method: 'POST', body: JSON.stringify({pergunta: texto, conversa: CONVERSA})
-    });
-    const d = await r.json();
+    })).json();
+    if (inicio.erro) throw new Error(inicio.erro);
+    if (inicio.conversa){ CONVERSA = inicio.conversa; guardar(); }
+    localStorage.setItem('atlas.trabalho', inicio.trabalho);
+
+    // Pergunta de 2 em 2 s se ja ficou pronto. Segurar a conexao aberta os
+    // 40-90 s que a Atlas leva funcionava no PC e falhava no celular: o
+    // tunel cortava e o unico sinal era "nao consegui falar com a Atlas".
+    let d = null;
+    for (let tentativa = 0; tentativa < 300; tentativa++){
+      await new Promise(f => setTimeout(f, 2000));
+      let passo;
+      try {
+        passo = await (await api('/api/resposta?id=' + inicio.trabalho)).json();
+      } catch (e) { continue; }   // piscada de rede: tenta de novo
+      if (passo.pronto){ d = passo; break; }
+    }
     esperando.remove();
+    localStorage.removeItem('atlas.trabalho');
+    if (!d) throw new Error('A Atlas demorou demais para responder.');
     if (d.erro) bolha('ela erro', d.erro);
     else {
-      if (d.conversa){ CONVERSA = d.conversa; guardar(); }
       const el = bolha('ela', d.resposta || '(sem resposta)', d.reservado);
       adicionarBotaoFalar(el, d.resposta);
       if (document.getElementById('vozLigada').checked) falar(d.resposta);
@@ -670,7 +724,9 @@ async function enviar(){
     }
   } catch (e) {
     esperando.remove();
-    bolha('ela erro', 'Não consegui falar com a Atlas. Ela está ligada?');
+    bolha('ela erro', e.message && e.message !== 'Failed to fetch'
+      ? e.message
+      : 'Não consegui falar com a Atlas. Ela está ligada?');
   } finally {
     ocupado = false;
     document.getElementById('btn').disabled = false;
