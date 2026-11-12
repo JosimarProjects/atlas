@@ -280,6 +280,7 @@ class Atendente(BaseHTTPRequestHandler):
                         "pronto": True, "resposta": resposta,
                         "reservado": reservado, "de_dentro": de_dentro,
                         "servico_pedido": cofre.ultimo_servico_pedido(),
+                        "motor": cerebro.ULTIMO_MOTOR,
                         "titulo": titulo,
                         "pendentes": confirmacao.listar(),
                         "quando": datetime.now().isoformat(timespec="seconds")})

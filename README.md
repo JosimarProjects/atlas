@@ -60,6 +60,8 @@ CLAUDE  (3 s)  "...governou de 1831 a 1889 e foi deposto
 
 Doze vezes mais rápido e factualmente certo. É honesto dizer: **boa parte da engenharia deste projeto é andaime para compensar o modelo local** — a trava anti-alucinação, o roteador com gramática, a coerção de tipos, o detector de deriva de idioma. Com Claude, nada disso seria necessário.
 
+**Cada resposta diz quem respondeu** — um selo `Claude` ou `Local` ao lado da hora. Sem isso não há como saber se a troca pegou, e pior: quando o Claude falha e ela cai para o local, a resposta parece do Claude e a conclusão vira *"a chave não funciona"*.
+
 **O roteador é sempre local**, mesmo com o Claude ligado. Escolher ferramenta é decisão mecânica que o Qwen resolve em 1 s com a gramática BNF garantindo a forma — mandar isso para o modelo caro seria desperdício de tempo e de cota. O Claude entra onde a qualidade da resposta importa.
 
 **O que não muda:** memória, ferramentas, cofre, agendamentos e interface não sabem qual cérebro está ligado. `cerebro._chamar()` é o único ponto que diverge — é por isso que a troca cabe num botão.

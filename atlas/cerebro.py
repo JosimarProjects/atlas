@@ -36,6 +36,13 @@ MOTOR_LOCAL = "local"
 MOTOR_CLAUDE = "claude"
 
 
+# Qual motor realmente respondeu na ultima chamada. Nao basta olhar o que
+# esta escolhido: se o Claude falhar, a resposta vem do local, e o dono
+# precisa saber disso -- senao atribui ao Claude uma resposta que nao foi
+# dele e conclui que a troca nao funcionou.
+ULTIMO_MOTOR = MOTOR_LOCAL
+
+
 def motor_atual() -> str:
     try:
         from .memoria import conectar
@@ -166,16 +173,21 @@ def _chamar(
     # schema no prompt, levou 292 s -- estourou o limite e caiu de volta.
     # Mandar a parte mecanica para o modelo caro era desperdicio de tempo e
     # de cota; o Claude vale onde a qualidade da resposta importa.
+    global ULTIMO_MOTOR
     if schema is None and motor_atual() == MOTOR_CLAUDE:
         from . import claude_cli
         try:
-            return claude_cli.chamar(mensagens, schema)
+            r = claude_cli.chamar(mensagens, schema)
+            ULTIMO_MOTOR = MOTOR_CLAUDE
+            return r
         except claude_cli.ClaudeIndisponivel as e:
             # Cair para o local e melhor do que nao responder: o dono fica
             # sem a qualidade, nao sem a assistente.
             print(f"[atlas] Claude indisponivel ({e}); usando o local.")
 
     resposta = _post("/chat/completions", corpo)
+    if schema is None:
+        ULTIMO_MOTOR = MOTOR_LOCAL
     return resposta["choices"][0]["message"].get("content") or ""
 
 
