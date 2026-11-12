@@ -126,7 +126,7 @@ def _disparar(a: dict[str, Any]) -> None:
     from . import whatsapp
 
     texto = f"Lembrete: {a['texto']}"
-    if a["canal"] == "whatsapp" and config.MEU_WHATSAPP:
+    if a["canal"] == "whatsapp" and config.MEU_WHATSAPP and not whatsapp.SIMULAR:
         try:
             # Disparo direto, sem a trava: quem autorizou foi o dono quando
             # criou a regra, e o destino e o numero dele mesmo.

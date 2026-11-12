@@ -25,6 +25,12 @@ BASE = os.environ.get(
     "https://automacoes-evolution-api.fdsefm.easypanel.host").rstrip("/")
 INSTANCIA = os.environ.get("ATLAS_EVOLUTION_INSTANCIA", "principal")
 
+# Com ATLAS_SIMULAR=1 nada sai de verdade: o envio responde como se tivesse
+# saido e nao toca a Evolution. Existe porque testar a conversa dispara
+# mensagem real -- o numero do dono dispensa confirmacao, entao uma bateria
+# de testes vira uma sequencia de zaps no celular dele. Aconteceu.
+SIMULAR = os.environ.get("ATLAS_SIMULAR", "") == "1"
+
 _SKILL = Path.home() / ".claude" / "skills" / "evolution-api" / "SKILL.md"
 
 
@@ -102,6 +108,8 @@ def mandar_whatsapp(numero: str, mensagem: str) -> str:
         return "Mensagem vazia."
 
     def executar() -> str:
+        if SIMULAR:
+            return f"(simulado, nada enviado) Mensagem para {alvo}: {texto[:60]}"
         _pedir(f"/message/sendText/{INSTANCIA}",
                {"number": alvo, "text": texto}, metodo="POST")
         return f"Mensagem enviada para {alvo}."

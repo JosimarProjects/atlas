@@ -44,6 +44,37 @@ _proximo = [0]
 _VIDA_TRABALHO_S = 1800   # meia hora depois de lido, some da memoria
 
 
+def _marcar_orfas() -> None:
+    """Pergunta registrada sem resposta vira um aviso visivel na conversa.
+
+    Reiniciar o servidor mata as threads em andamento. A pergunta ja estava
+    gravada, a resposta nunca chegou, e o historico ficava com um balao do
+    dono seguido de nada -- sem nenhum sinal de que algo se perdeu. Agora
+    fica dito.
+    """
+    from .memoria import conectar as _con
+    con = _con()
+    try:
+        orfas = con.execute("""
+            SELECT f.id, f.conversa_id FROM falas f
+            WHERE f.papel = 'user'
+              AND NOT EXISTS (
+                SELECT 1 FROM falas g
+                WHERE g.conversa_id IS f.conversa_id
+                  AND g.id > f.id AND g.papel = 'assistant')
+        """).fetchall()
+        for o in orfas:
+            con.execute(
+                "INSERT INTO falas (quando, papel, conteudo, conversa_id) "
+                "VALUES (?, 'assistant', ?, ?)",
+                (datetime.now().isoformat(timespec="seconds"),
+                 "(essa pergunta se perdeu quando a Atlas foi reiniciada — "
+                 "pode repetir)", o["conversa_id"]))
+        con.commit()
+    except Exception:
+        pass   # recuperacao e cortesia; nunca impede o servidor de subir
+
+
 def _limpar_trabalhos() -> None:
     agora = time.time()
     for n in [n for n, t in _trabalhos.items()
@@ -495,6 +526,7 @@ def main() -> int:
     # O relogio dos agendamentos sobe junto do servidor: e ele que faz
     # o lembrete das 14h chegar sem ninguem pedir.
     agenda_propria.ligar_relogio()
+    _marcar_orfas()
 
     servidor = ThreadingHTTPServer((endereco, a.porta), Atendente)
     print(f"Atlas web em http://127.0.0.1:{a.porta}")
