@@ -169,9 +169,17 @@ def ligar_relogio() -> None:
         return
 
     def laco():
+        voltas = 0
         while True:
             try:
                 conferir()
+                # A faxina da memoria pega carona no relogio, mas a cada 20
+                # voltas (~10 min): fato vencido ja fica invisivel na busca,
+                # entao apaga-lo e arrumacao, nao urgencia.
+                voltas += 1
+                if voltas % 20 == 0:
+                    from . import lembrancas
+                    lembrancas.limpar_vencidos()
             except Exception:
                 pass    # o relogio nunca pode morrer por causa de um erro
             time.sleep(30)

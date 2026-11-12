@@ -122,6 +122,22 @@ Dois ajustes vieram da medição:
 - **Exemplos estreitos ensinam estreito.** A primeira versão só tinha exemplos de trabalho, família e saúde — e o modelo perdia equipamento e rotina. Ampliar os pares resolveu; acrescentar *regras* não teria resolvido.
 - **Terceira pessoa, sempre.** Ele gravava *"meu PC tem uma RX 7600"*. A memória é lida meses depois, fora do contexto da frase: *"meu"* não diz de quem. Agora grava *"o PC dele tem uma RX 7600"*.
 
+### Memória com prazo
+
+Nem tudo merece ficar para sempre. A senha do wifi do hotel, o código do portão do Airbnb, o nome do colega do projeto que acaba em dezembro — guardar isso eternamente é entulho.
+
+```
+você>  guarda a senha do wifi do hotel, ABC123, por 3 dias
+atlas> Guardei: senha do wifi do hotel — ABC123. Some sozinho em 14/11.
+```
+
+Aceita data (`31/12/2026`, `25/12/2026`) ou período (`30 dias`, `2 semanas`, `1 mês`, `amanhã`). O cartão na aba Memória mostra **até 14/11** em amarelo.
+
+Duas decisões:
+
+- **Prazo que não entendo vira fato sem prazo**, e ela avisa. Um prazo errado faria o fato sumir na hora errada, sem aviso — pior que não ter prazo.
+- **Vencido fica invisível na hora, some do disco depois.** A busca já exclui o que passou da data; a faxina roda a cada dez minutos. Assim nada aparece indevidamente, e o banco não precisa de varredura a cada consulta.
+
 ### Contar direto
 
 Na aba **Memória** há um campo onde você escreve o que quer que ela saiba. Esse caminho **não passa pelo modelo**: o que você digitou é o que fica guardado, sem reinterpretação.

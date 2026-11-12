@@ -63,6 +63,11 @@ END;
 
 def _preparar(con) -> None:
     con.executescript(_ESQUEMA)
+    # `expira` nasceu depois dos fatos; ALTER e a unica forma de acrescenta-la
+    # sem perder o que ja esta guardado.
+    colunas = {l["name"] for l in con.execute("PRAGMA table_info(fatos)")}
+    if "expira" not in colunas:
+        con.execute("ALTER TABLE fatos ADD COLUMN expira TEXT")
 
 
 def abrir():
@@ -110,20 +115,66 @@ def _cosseno(a: list[float], b: list[float]) -> float:
 
 
 # ----------------------------------------------------------------- escrita
+def interpretar_prazo(texto: str) -> str:
+    """"31/12/2026", "2026-12-31", "30 dias", "2 semanas" -> AAAA-MM-DD.
+
+    Devolve "" quando nao entende -- fato sem prazo e melhor do que fato com
+    prazo errado, que sumiria sozinho na hora errada.
+    """
+    from datetime import timedelta
+
+    t = (texto or "").strip().lower()
+    if not t:
+        return ""
+
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", t)
+    if m:
+        return t
+    m = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", t)
+    if m:
+        d, mes, a = (int(x) for x in m.groups())
+        return f"{a:04d}-{mes:02d}-{d:02d}"
+
+    m = re.search(r"(\d+)\s*(dia|semana|mes|mês|ano)", t)
+    if m:
+        n = int(m.group(1))
+        unidade = m.group(2)
+        dias = {"dia": 1, "semana": 7, "mes": 30, "mês": 30, "ano": 365}[unidade]
+        return (datetime.now() + timedelta(days=n * dias)).strftime("%Y-%m-%d")
+
+    for palavra, dias in (("amanha", 1), ("amanhã", 1), ("semana que vem", 7),
+                          ("mes que vem", 30), ("mês que vem", 30)):
+        if palavra in t:
+            return (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d")
+    return ""
+
+
 def guardar(assunto: str, texto: str, motivo: str = "",
-            categoria: str = "geral", origem: str = "") -> int:
+            categoria: str = "geral", origem: str = "",
+            expira: str = "") -> int:
     """Grava um fato e ja calcula o vetor dele."""
     con = abrir()
     vetor = embutir(f"{assunto}. {texto}. {motivo}")
     cur = con.execute(
-        "INSERT INTO fatos (criado, categoria, assunto, texto, motivo, origem, vetor) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO fatos (criado, categoria, assunto, texto, motivo, origem, "
+        "vetor, expira) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (datetime.now().isoformat(timespec="seconds"), categoria.strip() or "geral",
          assunto.strip(), texto.strip(), motivo.strip(), origem.strip(),
-         _empacotar(vetor) if vetor else None),
+         _empacotar(vetor) if vetor else None,
+         interpretar_prazo(expira) or None),
     )
     con.commit()
     return cur.lastrowid
+
+
+def limpar_vencidos() -> int:
+    """Apaga o que passou do prazo. Chamado pelo relogio, a cada volta."""
+    con = abrir()
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    cur = con.execute("DELETE FROM fatos WHERE expira IS NOT NULL AND expira < ?",
+                      (hoje,))
+    con.commit()
+    return cur.rowcount
 
 
 def esquecer(id_fato: int) -> bool:
@@ -185,8 +236,9 @@ def buscar(consulta: str, limite: int = 5) -> list[dict[str, Any]]:
 
     v = embutir(consulta)
     if v:
-        todos = con.execute("SELECT id, vetor FROM fatos "
-                            "WHERE vetor IS NOT NULL").fetchall()
+        todos = con.execute(f"SELECT id, vetor FROM fatos "
+                            f"WHERE vetor IS NOT NULL AND {_NAO_VENCIDO}"
+                            ).fetchall()
         notas = [(l["id"], _cosseno(v, _desempacotar(l["vetor"]))) for l in todos]
         notas.sort(key=lambda x: x[1], reverse=True)
         for pos, (fid, nota) in enumerate(notas[:20]):
@@ -200,8 +252,8 @@ def buscar(consulta: str, limite: int = 5) -> list[dict[str, Any]]:
     ids = [i for i, _ in melhores]
     marcas = ",".join("?" * len(ids))
     linhas = con.execute(
-        f"SELECT id, criado, categoria, assunto, texto, motivo, origem "
-        f"FROM fatos WHERE id IN ({marcas})", ids
+        f"SELECT id, criado, categoria, assunto, texto, motivo, origem, expira "
+        f"FROM fatos WHERE id IN ({marcas}) AND {_NAO_VENCIDO}", ids
     ).fetchall()
     por_id = {l["id"]: dict(l) for l in linhas}
 
@@ -216,7 +268,11 @@ def buscar(consulta: str, limite: int = 5) -> list[dict[str, Any]]:
 # Nunca selecionamos `vetor`: e um BLOB de 3 KB que nao serve a ninguem fora
 # da busca, e que quebrava a API web ("Object of type bytes is not JSON
 # serializable") assim que a interface listava a memoria.
-_COLUNAS = "id, criado, acessado, acessos, categoria, assunto, texto, motivo, origem"
+_COLUNAS = ("id, criado, acessado, acessos, categoria, assunto, texto, "
+            "motivo, origem, expira")
+
+# Um fato vencido nao pode aparecer so porque a faxina ainda nao rodou.
+_NAO_VENCIDO = "(expira IS NULL OR expira >= date('now','localtime'))"
 
 
 def listar(categoria: str = "", limite: int = 20) -> list[dict[str, Any]]:
@@ -224,11 +280,12 @@ def listar(categoria: str = "", limite: int = 20) -> list[dict[str, Any]]:
     if categoria:
         linhas = con.execute(
             f"SELECT {_COLUNAS} FROM fatos WHERE categoria = ? "
-            "ORDER BY id DESC LIMIT ?", (categoria, limite)).fetchall()
+            f"AND {_NAO_VENCIDO} ORDER BY id DESC LIMIT ?",
+            (categoria, limite)).fetchall()
     else:
         linhas = con.execute(
-            f"SELECT {_COLUNAS} FROM fatos ORDER BY id DESC LIMIT ?",
-            (limite,)).fetchall()
+            f"SELECT {_COLUNAS} FROM fatos WHERE {_NAO_VENCIDO} "
+            "ORDER BY id DESC LIMIT ?", (limite,)).fetchall()
     return [dict(l) for l in linhas]
 
 
@@ -254,5 +311,7 @@ def formatar(fatos: list[dict[str, Any]]) -> str:
         if f.get("motivo"):
             linha += f" (porque: {f['motivo']})"
         linha += f" — guardado em {quando}"
+        if f.get("expira"):
+            linha += f", expira em {f['expira']}"
         linhas.append(linha)
     return "\n".join(linhas)

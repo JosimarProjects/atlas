@@ -255,11 +255,21 @@ def ler_pagina(url: str) -> str:
 
 
 # ------------------------------------------------------- memoria de longo prazo
-def lembrar(assunto: str, texto: str, motivo: str = "", categoria: str = "geral") -> str:
-    """Guarda um fato para sempre, recuperavel em qualquer conversa futura."""
-    lembrancas.guardar(assunto, texto, motivo, categoria)
+def lembrar(assunto: str, texto: str, motivo: str = "", categoria: str = "geral",
+            expira: str = "") -> str:
+    """Guarda um fato. Com `expira`, ele some sozinho depois da data."""
+    quando = lembrancas.interpretar_prazo(expira)
+    if expira and not quando:
+        # Melhor guardar para sempre do que inventar um prazo: um prazo
+        # errado faz o fato sumir na hora errada, sem aviso.
+        return (f"Nao entendi o prazo '{expira}'. Use uma data (31/12/2026) "
+                "ou um periodo (30 dias). Guardei sem prazo por enquanto: "
+                + str(lembrancas.guardar(assunto, texto, motivo, categoria) and
+                      f"{assunto} — {texto}"))
+    lembrancas.guardar(assunto, texto, motivo, categoria, expira=expira)
     extra = f" Motivo: {motivo}." if motivo else ""
-    return f"Guardei na memoria: {assunto} — {texto}.{extra}"
+    prazo = f" Some sozinho em {quando}." if quando else ""
+    return f"Guardei na memoria: {assunto} — {texto}.{extra}{prazo}"
 
 
 def recordar(sobre: str = "", categoria: str = "") -> str:
@@ -598,12 +608,15 @@ ESQUEMAS: list[dict[str, Any]] = [
     _f("ler_pagina", "Abre uma URL e le o texto dela.",
        {"url": {**_S, "description": "Endereco completo da pagina."}}, ["url"]),
     _f("lembrar",
-       "Guarda algo na memoria permanente. Use quando pedirem para lembrar, "
-       "anotar, salvar, guardar ou nao esquecer de alguma coisa.",
+       "Guarda algo na memoria. Use quando pedirem para lembrar, anotar, "
+       "salvar, guardar ou nao esquecer. Aceita prazo: 'guarde ate sexta', "
+       "'lembre disso por 30 dias'.",
        {"assunto": {**_S, "description": "Do que se trata, curto. Ex: 'Filme Duna 3'."},
         "texto": {**_S, "description": "O conteudo a guardar."},
         "motivo": {**_S, "description": "Por que guardar. Ex: 'quero assistir'."},
-        "categoria": {**_S, "description": "filme, pessoa, trabalho, compra, ideia, geral."}},
+        "categoria": {**_S, "description": "filme, pessoa, trabalho, compra, ideia, geral."},
+        "expira": {**_S, "description": "Opcional. Quando esquecer: '31/12/2026', "
+                                        "'30 dias', '2 semanas'. Vazio = para sempre."}},
        ["assunto", "texto"]),
     _f("recordar",
        "Busca na memoria permanente o que foi guardado antes, com o motivo. "

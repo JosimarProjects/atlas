@@ -131,6 +131,11 @@
   }
   .fato .as{font-weight:600;display:block;margin-bottom:2px}
   .fato .mo{color:var(--fraco);font-size:11.5px;font-style:italic}
+  .fato .prazo{
+    display:inline-block;font-size:9px;color:var(--amarelo);
+    border:1px solid rgba(251,191,36,.4);border-radius:4px;
+    padding:0 4px;margin-left:5px
+  }
   .fato{position:relative}
   .fato .x{
     position:absolute;top:6px;right:6px;width:19px;height:19px;border:none;
@@ -402,7 +407,7 @@
   <div class="fatos" id="fatos" style="display:none">
     <div class="sobre">
       <textarea id="sobreMim" rows="2"
-        placeholder="Conte algo sobre você… ex: sou desenvolvedor, moro em Ribeirão Pires, tenho intolerância a lactose"></textarea>
+        placeholder="Conte algo sobre você… ex: sou desenvolvedor, moro em Ribeirão Pires. Para algo temporário, diga na conversa: 'guarde até sexta que...'"></textarea>
       <button class="ok" onclick="contarSobreMim()">Guardar sobre mim</button>
       <div class="ajuda">
         Ela também aprende sozinha: o que você mencionar de passagem e for
@@ -1026,6 +1031,13 @@ async function fatos(){
       e.querySelector('.as').textContent = f.assunto || '';
       e.querySelector('.tx').textContent = f.texto || '';
       e.querySelector('.mo').textContent = f.motivo ? 'porque: ' + f.motivo : '';
+      if (f.expira){
+        const e2 = document.createElement('span');
+        e2.className = 'prazo';
+        const [a, m2, d2] = f.expira.split('-');
+        e2.textContent = 'até ' + d2 + '/' + m2;
+        e.querySelector('.cat').after(e2);
+      }
       if (f.acessos > 2){
         const a = document.createElement('span');
         a.className = 'aut'; a.textContent = f.acessos + 'x usado';
