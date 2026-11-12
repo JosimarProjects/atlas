@@ -139,9 +139,24 @@ _CONTINUACAO = re.compile(
 )
 
 
+# Ordem curta no imperativo quase sempre se refere ao que acabou de ser
+# dito: "manda no whatsapp", "envia pra ele", "apaga isso". Sem o contexto
+# anterior o roteador nao tem O QUE mandar, e a resposta saia vazia.
+_ORDEM_CURTA = re.compile(
+    r"^\s*(manda|mande|envia|envie|repete|repita|faz|faca|poe|poem|"
+    r"coloca|apaga|apague|cancela|guarda|salva|anota|busca|procura|"
+    r"le|leia|responde|responda)\b",
+    re.IGNORECASE,
+)
+
+
 def _parece_continuacao(pergunta: str) -> bool:
     p = pergunta.strip()
-    return bool(_CONTINUACAO.match(p)) or len(p.split()) <= 3
+    if _CONTINUACAO.match(p) or len(p.split()) <= 3:
+        return True
+    # "manda no whatsapp" sozinho nao diz o que mandar; passando de seis
+    # palavras a frase ja costuma trazer o conteudo junto.
+    return bool(_ORDEM_CURTA.match(p)) and len(p.split()) <= 6
 
 
 def _schema_decisao() -> dict[str, Any]:
@@ -247,6 +262,12 @@ def responder(pergunta: str, memoria: Memoria) -> str:
         }
 
     texto = _limpar(_chamar(mensagens))
+
+    if not texto:
+        # O modelo gastou o orcamento inteiro raciocinando e nao sobrou
+        # resposta. O dono via "(sem resposta)" e nao tinha o que fazer.
+        # Sem raciocinio ele responde curto, mas responde.
+        texto = _limpar(_chamar(mensagens, pensar=False, max_tokens=600))
 
     if observacoes:
         # Resultado de ferramenta ja vem como frase falavel em portugues. Se a
