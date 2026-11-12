@@ -177,6 +177,22 @@
   .aviso .x:hover{background:rgba(248,113,113,.15);color:var(--vermelho)}
   .vaziozinho{color:var(--tenue);font-size:12px;padding:12px 4px;text-align:center}
 
+  /* Fundo escuro atras da gaveta. No celular a lateral cobria o botao ☰
+     que a fecharia, e nao havia saida -- tocar fora e o gesto que todo
+     mundo ja tenta primeiro. */
+  .cortina{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:25;
+    opacity:0;pointer-events:none;transition:opacity .25s
+  }
+  .cortina.visivel{opacity:1;pointer-events:auto}
+  .fechar{
+    display:none;position:absolute;top:14px;right:12px;width:30px;height:30px;
+    border:none;background:var(--painel2);color:var(--fraco);border-radius:8px;
+    font-size:18px;line-height:1;cursor:pointer
+  }
+  .fechar:hover{color:var(--texto)}
+  @media (max-width:820px){ .fechar{display:block} }
+
   /* ------------------------------------------------------------ conversa */
   main{flex:1;display:flex;flex-direction:column;min-width:0}
   header{
@@ -339,7 +355,9 @@
 </head>
 <body>
 
+<div class="cortina" id="cortina" onclick="gaveta(false)"></div>
 <aside id="lateral">
+  <button class="fechar" onclick="gaveta(false)" title="Fechar">&times;</button>
   <div class="marca">
     <div class="orbe" id="orbe"></div>
     <div><h1>Atlas</h1><small id="dono">assistente local</small></div>
@@ -411,7 +429,7 @@
 
 <main>
   <header>
-    <button class="hamburguer" onclick="document.getElementById('lateral').classList.toggle('oculta')">☰</button>
+    <button class="hamburguer" onclick="gaveta()">☰</button>
     <div>
       <div class="titulo">Conversa</div>
       <div class="sub" id="subtitulo">roda no seu computador</div>
@@ -457,6 +475,18 @@ const api = (r, o = {}) => fetch(r, {
 let ocupado = false;
 let ESPACO = +localStorage.getItem('atlas.espaco') || 0;
 let CONVERSA = +localStorage.getItem('atlas.conversa') || 0;
+
+/* ------------------------------------------------------------- gaveta */
+function gaveta(abrir){
+  const lat = document.getElementById('lateral');
+  const cor = document.getElementById('cortina');
+  const estaAberta = !lat.classList.contains('oculta');
+  const vai = (abrir === undefined) ? !estaAberta : abrir;
+  lat.classList.toggle('oculta', !vai);
+  cor.classList.toggle('visivel', vai && innerWidth < 820);
+}
+
+function noCelular(){ return innerWidth < 820; }
 
 /* ------------------------------------------------- espacos e conversas */
 function trocarAba(qual){
@@ -579,7 +609,7 @@ async function carregarConversas(){
     const x = document.createElement('button'); x.className = 'x';
     x.innerHTML = '&times;'; x.title = 'Apagar';
     el.append(t, q, x);
-    t.onclick = () => abrirConversa(c.id);
+    t.onclick = () => { abrirConversa(c.id); if (noCelular()) gaveta(false); };
     x.onclick = (ev) => { ev.stopPropagation(); apagarConversa(c.id, c.titulo); };
     alvo.appendChild(el);
   }
@@ -592,6 +622,7 @@ async function novaConversa(){
   CONVERSA = d.id; guardar();
   document.getElementById('fio').innerHTML = '';
   carregarConversas(); carregarEspacos();
+  if (noCelular()) gaveta(false);
   document.getElementById('campo').focus();
 }
 
@@ -1049,6 +1080,9 @@ document.getElementById('visao').addEventListener('change', async (ev) => {
 estado();
 setInterval(estado, 10000);
 setInterval(buscarAvisosVencidos, 30000);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') gaveta(false);
+});
 document.getElementById('campo').focus();
 if (innerWidth < 820) document.getElementById('lateral').classList.add('oculta');
 </script>
