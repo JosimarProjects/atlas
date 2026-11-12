@@ -33,7 +33,7 @@ O jeito ingênuo guarda a conversa inteira, palavra por palavra. O contexto cres
 
 **3. Ferramentas de verdade, não encenação**
 
-Quando a Atlas diz que criou um lembrete, [uma linha entrou no SQLite](atlas/ferramentas.py). Ela não finge. São 8 ferramentas: lembretes (criar/listar/concluir), notas, hora, clima e relatório do dia.
+Quando a Atlas diz que criou um lembrete, [uma linha entrou no SQLite](atlas/ferramentas.py). Ela não finge. São 27 ferramentas: lembretes, notas, hora, clima, busca na web, memória de longo prazo, cofre, WhatsApp, e-mail, agenda, agendamentos e os dados da própria máquina.
 
 
 
@@ -59,6 +59,8 @@ CLAUDE  (3 s)  "...governou de 1831 a 1889 e foi deposto
 ```
 
 Doze vezes mais rápido e factualmente certo. É honesto dizer: **boa parte da engenharia deste projeto é andaime para compensar o modelo local** — a trava anti-alucinação, o roteador com gramática, a coerção de tipos, o detector de deriva de idioma. Com Claude, nada disso seria necessário.
+
+**O roteador é sempre local**, mesmo com o Claude ligado. Escolher ferramenta é decisão mecânica que o Qwen resolve em 1 s com a gramática BNF garantindo a forma — mandar isso para o modelo caro seria desperdício de tempo e de cota. O Claude entra onde a qualidade da resposta importa.
 
 **O que não muda:** memória, ferramentas, cofre, agendamentos e interface não sabem qual cérebro está ligado. `cerebro._chamar()` é o único ponto que diverge — é por isso que a troca cabe num botão.
 
@@ -174,6 +176,30 @@ Na aba **Memória** há um campo onde você escreve o que quer que ela saiba. Es
 
 Cada fato mostra quantas vezes já foi recuperado — fato usado com frequência é fato que importa.
 
+
+---
+
+## Ela sabe em que máquina está
+
+Perguntei o modelo do PC e ela respondeu:
+
+```
+"Não tenho acesso aos dados do sistema para identificar o modelo
+ exato do hardware."
+```
+
+Honesto e constrangedor ao mesmo tempo — ela roda **dentro** da máquina. O dado estava a uma chamada de distância; faltava a ferramenta. É o mesmo erro do botão de apagar, pelo avesso: lá a capacidade não existia e o modelo fingiu que sim; aqui existia e ele se desculpou. Nos dois casos a correção é a mesma — a ferramenta passa a existir.
+
+```
+você>  qual o modelo exato desse computador?
+Atlas: Este computador é um Micro-Star International MS-7E28.
+       O processador é um AMD Ryzen 5 8500G, com 6 núcleos, 12 threads.
+       Tem 31 GB de RAM. A placa de vídeo é AMD Radeon RX 7600 de 8 GB.
+```
+
+Tudo vem de **uma única** chamada ao CIM ([`atlas/maquina.py`](atlas/maquina.py)). Abrir um PowerShell custa perto de um segundo: pedir processador, memória e disco separados somaria três segundos a uma resposta falada. O retrato fica em cache por um minuto — ninguém troca de processador no meio da conversa.
+
+> **A VRAM não vem do `AdapterRAM`.** Esse campo é `uint32` e satura em 4 GB: a RX 7600 de 8 GB aparecia com metade. O valor de verdade está no registro, em `HardwareInformation.qwMemorySize`, com 64 bits.
 
 ---
 
@@ -386,7 +412,21 @@ python -m atlas.main --diga "que horas são?"
 | Servidor de embeddings | 309 MB | `--device none` — `--n-gpu-layers 0` não bastava |
 | Contexto de 16k | ~340 MB | reduzido para 8k |
 
-### 4. Ligar junto com o PC
+### 4. Conferir
+
+```bash
+python scripts/autoteste.py
+```
+
+Sete verificações que não dependem do modelo estar carregado: importações, memória, as 27 ferramentas, microfone e saída de áudio, GPU, peso do modelo e voz.
+
+> **O teste escreve de verdade — num banco descartável.** Ferramenta que só finge não prova nada, então o autoteste cria lembrete, nota e falas para valer. Até a versão anterior ele criava no banco **do dono**: as falas nasciam sem conversa, o `espacos.py` adotava toda fala órfã numa conversa nova, e a barra lateral ganhava uma "Conversas anteriores" cujo conteúdo inteiro era a Atlas dizendo *"resposta de autoteste"*. Agora `ATLAS_BANCO` aponta para um arquivo em `%TEMP%`, apagado no início de cada rodada.
+>
+> Nascer do zero não é só higiene: o banco limpo achou um bug que nenhum banco de teste acharia. A coluna `conversa_id` era criada por `ALTER TABLE` na migração dos espaços, e só o **modo web** passava por lá. Em instalação nova, a primeira frase dita no **modo voz** morria com `table falas has no column named conversa_id`. Ninguém via porque toda máquina de desenvolvimento já estava migrada.
+
+Se você rodou uma versão antiga do autoteste, [`scripts/limpar_lixo_de_teste.py`](scripts/limpar_lixo_de_teste.py) tira do banco o que ficou — com cópia de segurança antes, e sem tocar na memória de longo prazo.
+
+### 5. Ligar junto com o PC
 
 ```powershell
 .\scripts\instala-servico.ps1            # só o cérebro
@@ -430,7 +470,8 @@ atlas/
 ├── atlas/
 │   ├── config.py        # caminhos, portas, prompt do sistema
 │   ├── memoria.py       # SQLite + resumo de tamanho constante
-│   ├── ferramentas.py   # 8 ferramentas + esquemas de tool calling
+│   ├── ferramentas.py   # 27 ferramentas + esquemas de tool calling
+│   ├── maquina.py       # hardware e sistema do PC onde ela roda
 │   ├── cerebro.py       # cliente HTTP do llama-server, loop de ferramentas
 │   ├── ouvido.py        # microfone + VAD + faster-whisper
 │   ├── voz.py           # Piper TTS
@@ -439,6 +480,7 @@ atlas/
     ├── servidor.ps1          # sobe o llama-server na GPU certa
     ├── baixa-modelo.sh       # Qwen3.5-9B, 16 conexões, retomável
     ├── baixa-voz.sh          # voz PT-BR do Piper
+    ├── autoteste.py          # sete checagens, em banco descartavel
     └── instala-servico.ps1   # Agendador do Windows
 ```
 
@@ -454,6 +496,8 @@ Tudo em [`atlas/config.py`](atlas/config.py), ou por variável de ambiente:
 | `ATLAS_STT_MODELO` | `small` | `medium` acerta mais, ~1s mais lento |
 | `ATLAS_VOZ` | `pt_BR-faber-medium` | `pt_BR-edresson-low` é feminina |
 | `ATLAS_DONO` | `Josimar` | como ela te chama |
+| `ATLAS_BANCO` | `data/atlas.db` | outro banco — é como o autoteste não suja o seu |
+| `ATLAS_SIMULAR` | *(vazio)* | `1` faz o WhatsApp responder sem enviar nada |
 
 **Contexto vs. VRAM.** `servidor.ps1` usa 16k de contexto com cache KV em `q8_0`. Se faltar VRAM, baixe `-Ctx`. Se sobrar, suba — o Qwen3.5 aguenta 262k.
 

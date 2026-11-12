@@ -1,13 +1,34 @@
 """Autoteste da Atlas: valida tudo que nao depende do modelo estar baixado.
 
 Roda com `python scripts/autoteste.py` a partir da raiz do projeto.
+
+O teste escreve de VERDADE -- e esse e o ponto: ferramenta que so finge nao
+prova nada. Entao ele escreve num banco descartavel, nunca no do dono. Antes
+disso, cada rodada deixava um lembrete "autoteste", uma nota "nota de teste" e
+duas falas soltas no atlas.db; as falas nasciam sem conversa, e o espacos.py,
+na subida seguinte, adotava toda fala orfa numa conversa nova. A barra lateral
+ganhava uma "Conversas anteriores" cujo conteudo inteiro era o teste -- e foi
+assim que a Atlas apareceu na tela dizendo "resposta de autoteste".
 """
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# Antes de qualquer import da atlas: o config le o ambiente na importacao.
+# Apagar no comeco (e nao no fim) e de proposito -- no Windows o arquivo
+# segue aberto pelas conexoes do teste. Assim cada rodada nasce do zero, com
+# o esquema criado na hora, que e o mesmo caminho de uma instalacao nova.
+BANCO_TESTE = Path(tempfile.gettempdir()) / "atlas-autoteste.db"
+BANCO_TESTE.unlink(missing_ok=True)
+os.environ["ATLAS_BANCO"] = str(BANCO_TESTE)
+# A mesma trava do zap: o numero do dono dispensa confirmacao, entao um teste
+# que escorregue numa ferramenta de envio toca o celular dele de verdade.
+os.environ.setdefault("ATLAS_SIMULAR", "1")
 
 OK, FALHA = "  ok  ", " FALHA"
 problemas: list[str] = []
@@ -55,6 +76,8 @@ def _ferramentas():
     assert "feito" in r3.lower(), r3
     r4 = f.executar("que_horas", {})
     assert "Sao" in r4, r4
+    r5 = f.executar("dados_do_pc", {"parte": "processador"})
+    assert "processador" in r5.lower() and "Nao consegui" not in r5, r5
     f.executar("anotar", {"titulo": "autoteste", "texto": "nota de teste"})
     assert "autoteste" in f.executar("ler_notas", {"titulo": "autoteste"})
     # erros nao podem explodir, tem que virar texto para o modelo ler
@@ -110,6 +133,7 @@ def _voz():
 
 if __name__ == "__main__":
     print("Autoteste da Atlas\n" + "-" * 58)
+    print(f"[ nota ] banco descartavel: {BANCO_TESTE}")
     checa("importacoes", _importa)
     checa("memoria (SQLite + resumo)", _memoria)
     checa("ferramentas", _ferramentas)

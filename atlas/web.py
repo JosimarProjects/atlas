@@ -35,7 +35,19 @@ PASTA_WEB = config.RAIZ / "web"
 
 # Uma conversa por vez: a Atlas e pessoal, nao multiusuario. O lock evita
 # que duas abas abertas embaralhem a memoria uma da outra.
-_vez = threading.Lock()
+# Uma trava POR CONVERSA, nao uma global. A global serializava tudo: uma
+# chamada lenta ao Claude segurava as outras conversas atras dela, e uma fila
+# de tres pedidos lentos fazia o quarto esperar minutos sem motivo. Dentro de
+# uma mesma conversa a ordem importa -- entre conversas diferentes, nao.
+_travas: dict[int, threading.Lock] = {}
+_trava_das_travas = threading.Lock()
+
+
+def _vez_da(conversa_id: int) -> threading.Lock:
+    with _trava_das_travas:
+        if conversa_id not in _travas:
+            _travas[conversa_id] = threading.Lock()
+        return _travas[conversa_id]
 
 # Conversas em andamento: numero -> {pronto, resposta, erro, ...}. Ficam em
 # memoria porque so interessam ate o navegador buscar o resultado.
@@ -258,7 +270,7 @@ class Atendente(BaseHTTPRequestHandler):
 
             def trabalhar():
                 try:
-                    with _vez:
+                    with _vez_da(cid):
                         resposta = cerebro.responder(pergunta, _mem(cid))
                         # O cofre escreve aqui o que so o dono pode ver. Nao
                         # passou pelo modelo nem esta na memoria.
@@ -291,7 +303,7 @@ class Atendente(BaseHTTPRequestHandler):
         if rota == "/api/esquecer":
             cid = int(self._corpo().get("conversa") or 0)
             if cid:
-                with _vez:
+                with _vez_da(cid):
                     _mem(cid).esquecer_tudo()
                     _memorias.pop(cid, None)
             return self._json({"ok": bool(cid)})
@@ -380,8 +392,7 @@ class Atendente(BaseHTTPRequestHandler):
             # que, ligados, tiram o modelo da VRAM. Por isso e um botao, e
             # nao um parametro de cada pedido.
             ligar = bool(self._corpo().get("ligar"))
-            with _vez:
-                ok, aviso = _reiniciar_cerebro(com_visao=ligar)
+            ok, aviso = _reiniciar_cerebro(com_visao=ligar)
             return self._json({"ok": ok, "visao": ligar and ok, "aviso": aviso})
 
         if rota == "/api/revelar":

@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from . import (agenda_propria, cofre, config, confirmacao, consolidacao,
-               lembrancas, mcp, whatsapp)
+               lembrancas, maquina, mcp, whatsapp)
 from .memoria import conectar
 
 CIDADE_PADRAO = os.environ.get("ATLAS_CIDADE", "Ribeirao Pires")
@@ -89,6 +89,12 @@ def ler_notas(titulo: str = "") -> str:
 def que_horas() -> str:
     agora = datetime.now()
     return f"Sao {agora:%H:%M} de {agora:%d/%m/%Y}."
+
+
+# ----------------------------------------------------------------- a maquina
+def dados_do_pc(parte: str = "") -> str:
+    """Hardware e sistema do PC onde a Atlas roda. Ver `maquina.py`."""
+    return maquina.resumo(parte)
 
 
 # --------------------------------------------------------------------- clima
@@ -546,6 +552,7 @@ REGISTRO: dict[str, Callable[..., str]] = {
     "anotar": anotar,
     "ler_notas": ler_notas,
     "que_horas": que_horas,
+    "dados_do_pc": dados_do_pc,
     "clima": clima,
     "relatorio_do_dia": relatorio_do_dia,
     "buscar_na_web": buscar_na_web,
@@ -595,6 +602,16 @@ ESQUEMAS: list[dict[str, Any]] = [
     _f("ler_notas", "Le as notas salvas, opcionalmente filtrando por titulo.",
        {"titulo": {**_S, "description": "Filtro por titulo. Opcional."}}, []),
     _f("que_horas", "Hora, horario, data, dia de hoje.", {}, []),
+    _f("dados_do_pc",
+       "Dados reais deste computador: modelo, fabricante, processador, "
+       "nucleos, memoria RAM, placa de video, VRAM, disco, espaco livre e "
+       "versao do Windows. Use para 'que PC e esse', 'qual o modelo do "
+       "computador', 'qual meu processador', 'quanta memoria eu tenho', "
+       "'quanto espaco sobrou no disco', 'minha configuracao', "
+       "'especificacoes da maquina', 'qual minha placa de video'.",
+       {"parte": {**_S, "description": "Opcional: processador, memoria, disco, "
+                                       "video, sistema ou modelo. Vazio = tudo."}},
+       []),
     _f("clima",
        "Temperatura, clima, tempo, chuva, previsao. A cidade e OPCIONAL: se o "
        "usuario nao disser qual, deixe vazio que usa a cidade dele.",

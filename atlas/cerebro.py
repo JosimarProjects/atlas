@@ -159,7 +159,14 @@ def _chamar(
     # Unico ponto do sistema que sabe qual cerebro esta ligado. Memoria,
     # ferramentas, cofre e interface seguem iguais nos dois -- e por isso que
     # a troca cabe num interruptor.
-    if motor_atual() == MOTOR_CLAUDE:
+    #
+    # Com schema, porem, o cerebro e SEMPRE o local. Escolher ferramenta e
+    # decisao mecanica, e o local resolve em ~2 s com a gramatica BNF
+    # garantindo a forma. O Claude, com o catalogo das 26 ferramentas mais o
+    # schema no prompt, levou 292 s -- estourou o limite e caiu de volta.
+    # Mandar a parte mecanica para o modelo caro era desperdicio de tempo e
+    # de cota; o Claude vale onde a qualidade da resposta importa.
+    if schema is None and motor_atual() == MOTOR_CLAUDE:
         from . import claude_cli
         try:
             return claude_cli.chamar(mensagens, schema)

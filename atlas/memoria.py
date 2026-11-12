@@ -19,7 +19,15 @@ CREATE TABLE IF NOT EXISTS falas (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     quando    TEXT NOT NULL,
     papel     TEXT NOT NULL,
-    conteudo  TEXT NOT NULL
+    conteudo  TEXT NOT NULL,
+    -- A conversa a que a fala pertence. A coluna tambem e acrescentada por
+    -- ALTER TABLE no espacos.py, para os bancos que nasceram antes dos
+    -- espacos -- mas tem de estar AQUI tambem: em instalacao limpa quem
+    -- cria a tabela e este esquema, e so o modo web passava pela migracao.
+    -- No modo voz, a primeira frase morria com "table falas has no column
+    -- named conversa_id". Ninguem via porque todo banco de teste ja estava
+    -- migrado; o banco descartavel do autoteste nasce do zero e pegou.
+    conversa_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS estado (
     chave TEXT PRIMARY KEY,

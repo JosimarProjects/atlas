@@ -70,7 +70,13 @@ VOZ_MODELO = os.environ.get("ATLAS_VOZ", "pt_BR-faber-medium")
 VOZ_VELOCIDADE = 1.0
 
 # ---------------------------------------------------------------- memoria
-BANCO = DADOS / "atlas.db"
+# O autoteste grava de verdade: criava lembrete, nota e duas falas no banco
+# do dono. As falas nasciam sem conversa, e na subida seguinte o espacos.py
+# adotava toda fala orfa numa conversa nova -- entao a barra lateral ganhava
+# uma "Conversas anteriores" cujo conteudo inteiro era "teste de autoteste" /
+# "resposta de autoteste". Com ATLAS_BANCO o teste aponta para um arquivo
+# descartavel e o banco de verdade nao e tocado.
+BANCO = Path(os.environ.get("ATLAS_BANCO") or DADOS / "atlas.db")
 # Quantas falas ficam na janela literal antes de virarem resumo. E o truque
 # do video: em vez do "caderno que engorda", um resumo de tamanho constante.
 MEMORIA_JANELA = 8

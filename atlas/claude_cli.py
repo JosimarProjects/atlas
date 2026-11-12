@@ -26,7 +26,9 @@ import json
 import subprocess
 from typing import Any
 
-TEMPO_LIMITE = 180
+# 60 s, nao 180. Uma chamada que passa disso nao vai melhorar esperando
+# mais, e cada segundo a mais e uma conversa parada atras dela.
+TEMPO_LIMITE = 60
 
 # Sem MCP e sem ferramentas: a Atlas ja tem as suas, e deixar o Claude usar
 # as dele faria o comportamento mudar conforme o cerebro escolhido.
@@ -93,13 +95,17 @@ def chamar(mensagens: list[dict[str, Any]],
     exe = _executavel()
     if not exe:
         raise ClaudeIndisponivel("o CLI do claude nao esta instalado")
-    args = [exe, "-p", corpo, "--output-format", "json", *_SEM_FERRAMENTAS]
+    # O prompt vai por STDIN, nao como argumento. Com a conversa inteira no
+    # argumento -- prompt de sistema, resumo, memoria e historico -- a chamada
+    # passava de 60 s e estourava, enquanto a mesma pergunta isolada levava
+    # 3 s. Linha de comando do Windows nao foi feita para carregar isso.
+    args = [exe, "-p", "--output-format", "json", *_SEM_FERRAMENTAS]
     if sistema:
         args += ["--append-system-prompt", sistema]
 
     try:
         r = subprocess.run(
-            args, capture_output=True, text=True, encoding="utf-8",
+            args, input=corpo, capture_output=True, text=True, encoding="utf-8",
             timeout=TEMPO_LIMITE,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired as e:
