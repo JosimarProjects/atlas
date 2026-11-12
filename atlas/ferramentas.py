@@ -335,7 +335,13 @@ def consultar_senha(servico: str) -> str:
     if not cofre.destrancado():
         return ("O cofre esta trancado. O dono precisa destrancar com a "
                 "senha-mestra antes.")
+    cofre.marcar_servico_pedido(servico)
     valor = cofre.revelar(servico)
+    if valor is None and not cofre.destrancado():
+        # Trancado nao e erro: de fora, e o fluxo normal -- a interface vai
+        # pedir a senha-mestra e buscar o valor por conta propria.
+        return (f"Para mostrar a senha de {servico} preciso da sua "
+                "senha-mestra. Ela aparece logo abaixo para voce digitar.")
     if valor is None:
         nomes = ", ".join(c["servico"] for c in cofre.listar()) or "nenhum"
         return f"Nao tenho senha de '{servico}'. Tenho de: {nomes}."

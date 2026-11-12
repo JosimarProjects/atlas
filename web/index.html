@@ -249,6 +249,24 @@
   .pedido .nao:hover{border-color:var(--vermelho);color:var(--vermelho)}
   .pedido.resolvido{opacity:.5;pointer-events:none}
 
+  .mestra{
+    margin-top:10px;background:rgba(251,191,36,.07);
+    border:1px solid rgba(251,191,36,.35);border-radius:12px;padding:12px 14px
+  }
+  .mestra .cab{font-weight:600;font-size:13px;margin-bottom:8px;color:var(--amarelo)}
+  .mestra input{
+    width:100%;background:var(--painel2);border:1px solid var(--borda);
+    border-radius:8px;color:var(--texto);font:inherit;font-size:13px;
+    padding:8px 10px;outline:none
+  }
+  .mestra input:focus{border-color:var(--amarelo)}
+  .mestra button{
+    width:100%;margin-top:7px;padding:7px;border-radius:8px;border:none;
+    background:var(--amarelo);color:#1a1200;font:inherit;font-size:12.5px;
+    font-weight:600;cursor:pointer
+  }
+  .mestra .aviso{font-size:11px;color:var(--tenue);margin-top:7px;line-height:1.45}
+
   .pontinhos{display:flex;gap:4px;padding:5px 2px}
   .pontinhos i{
     width:6px;height:6px;border-radius:50%;background:var(--tenue);
@@ -617,6 +635,7 @@ async function retomar(conversaId){
         else {
           const el = bolha('ela', passo.resposta || '(sem resposta)', passo.reservado);
           adicionarBotaoFalar(el, passo.resposta);
+          if (passo.pedir_mestra) pedirMestra(passo.pedir_mestra);
           for (const p of (passo.pendentes || [])) cartaoPedido(p);
         }
         break;
@@ -719,6 +738,7 @@ async function enviar(){
       const el = bolha('ela', d.resposta || '(sem resposta)', d.reservado);
       adicionarBotaoFalar(el, d.resposta);
       if (document.getElementById('vozLigada').checked) falar(d.resposta);
+      if (d.pedir_mestra) pedirMestra(d.pedir_mestra);
       for (const p of (d.pendentes || [])) cartaoPedido(p);
       carregarConversas();
     }
@@ -743,6 +763,63 @@ async function contarSobreMim(){
   campo.value = '';
   await api('/api/sobre-mim-add', {method: 'POST', body: JSON.stringify({texto})});
   fatos(); estado();
+}
+
+/* ---------------------------------------------------------- senha-mestra */
+/* Pelo tunel o cofre nao mantem sessao aberta: a senha-mestra vale para UMA
+   revelacao e nada fica destrancado depois. Quem roubar o link nao leva
+   nada sem ela. */
+function pedirMestra(servico){
+  const fio = document.getElementById('fio');
+  const d = document.createElement('div');
+  d.className = 'msg ela';
+  d.innerHTML = '<div class="av"></div><div style="flex:1"></div>';
+
+  const caixa = document.createElement('div');
+  caixa.className = 'mestra';
+  const cab = document.createElement('div');
+  cab.className = 'cab';
+  cab.textContent = '🔒 Senha-mestra para ver ' + servico;
+  const campo = document.createElement('input');
+  campo.type = 'password';
+  campo.placeholder = 'senha-mestra do cofre';
+  campo.autocomplete = 'off';
+  const bt = document.createElement('button');
+  bt.textContent = 'Mostrar';
+  const aviso = document.createElement('div');
+  aviso.className = 'aviso';
+  aviso.textContent = 'Vale só para esta consulta. Nada fica destrancado depois.';
+
+  async function tentar(){
+    const senha = campo.value;
+    if (!senha) return;
+    bt.textContent = 'Abrindo…';
+    const r = await (await api('/api/revelar', {
+      method: 'POST', body: JSON.stringify({servico, senha})})).json();
+    if (!r.ok){
+      bt.textContent = 'Mostrar';
+      aviso.textContent = r.erro || 'Não consegui abrir.';
+      aviso.style.color = 'var(--vermelho)';
+      campo.value = '';
+      return;
+    }
+    caixa.remove();
+    const c = document.createElement('div');
+    c.className = 'cofre';
+    c.innerHTML = '<span>🔒</span><span class="valor"></span>' +
+                  '<button onclick="copiar(this)">copiar</button>';
+    c.querySelector('.valor').textContent = r.servico + ': ' + r.valor;
+    d.children[1].appendChild(c);
+  }
+
+  bt.onclick = tentar;
+  campo.onkeydown = (e) => { if (e.key === 'Enter') tentar(); };
+
+  caixa.append(cab, campo, bt, aviso);
+  d.children[1].appendChild(caixa);
+  fio.appendChild(d);
+  rolar();
+  campo.focus();
 }
 
 /* -------------------------------------------------------- confirmacao */

@@ -184,6 +184,17 @@ O que o modelo recebe: *"Achei a senha de Netflix e mostrei na tela do dono. Eu 
 
 **Criptografia:** senha-mestra → `scrypt` (n=2¹⁵) → chave de 32 bytes → **AES-256-GCM** com nonce novo por registro. O GCM autentica: adulterar o arquivo faz a leitura falhar em vez de devolver lixo. A senha-mestra não é gravada em lugar nenhum.
 
+### Pelo celular, longe de casa
+
+| De onde | Como abre |
+|---|---|
+| **No PC ou na rede local** | destranca uma vez, vale 10 minutos |
+| **Pelo link público** | senha-mestra **a cada** segredo revelado |
+
+A diferença não é capricho. Com sessão aberta, quem conseguisse o link público pediria *"qual a senha do banco"* e receberia o valor — o destrancamento valia para o processo inteiro, não para quem destrancou.
+
+Agora, de fora, a senha-mestra vale para **uma** revelação e **nada fica aberto depois**. O cofre também tranca sozinho após 10 minutos parado: cofre aberto é janela aberta.
+
 ```bash
 python -m atlas.senhas criar      # define a senha-mestra
 python -m atlas.senhas guardar    # cadastra (você digita, nada passa por terceiros)

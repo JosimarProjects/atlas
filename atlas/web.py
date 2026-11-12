@@ -78,6 +78,17 @@ class Atendente(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
+    def _de_fora(self) -> bool:
+        """O pedido chegou pela internet, via tunel?
+
+        O cloudflared roda nesta maquina, entao o IP de origem e sempre
+        127.0.0.1 e nao distingue nada. O que distingue sao os cabecalhos
+        que a Cloudflare acrescenta a tudo que passa por ela.
+        """
+        return bool(self.headers.get("CF-Ray")
+                    or self.headers.get("CF-Connecting-IP")
+                    or self.headers.get("Cf-Warp-Tag-Id"))
+
     def _autorizado(self) -> bool:
         if not TOKEN:
             return True
@@ -160,6 +171,10 @@ class Atendente(BaseHTTPRequestHandler):
                 return self._json({"erro": "trabalho desconhecido"}, 404)
             if not t["pronto"]:
                 return self._json({"pronto": False})
+            if t.get("reservado") and (self._de_fora() or not t.get("de_dentro")):
+                # Veio de fora: o valor nao viaja junto da conversa. A
+                # interface pede a senha-mestra e busca em /api/revelar.
+                t = {**t, "reservado": [], "pedir_mestra": t.get("servico_pedido", "")}
             # Nao apaga ao ler: se o dono fechou o navegador e voltou, ou
             # abriu noutra aba, o resultado precisa continuar ali. A limpeza
             # e por idade, logo abaixo.
@@ -203,6 +218,9 @@ class Atendente(BaseHTTPRequestHandler):
                 cid = espacos.conversa_atual(lista[0]["id"])
 
             _limpar_trabalhos()
+            # Fica registrado de onde veio o pedido: o segredo revelado so
+            # volta para quem perguntou de dentro de casa.
+            de_dentro = not self._de_fora()
             _proximo[0] += 1
             numero = _proximo[0]
             _trabalhos[numero] = {"pronto": False, "conversa": cid}
@@ -217,7 +235,9 @@ class Atendente(BaseHTTPRequestHandler):
                         titulo = espacos.titular_pela_primeira_fala(cid)
                     _trabalhos[numero].update({
                         "pronto": True, "resposta": resposta,
-                        "reservado": reservado, "titulo": titulo,
+                        "reservado": reservado, "de_dentro": de_dentro,
+                        "servico_pedido": cofre.ultimo_servico_pedido(),
+                        "titulo": titulo,
                         "pendentes": confirmacao.listar(),
                         "quando": datetime.now().isoformat(timespec="seconds")})
                 except cerebro.CerebroIndisponivel as e:
@@ -325,7 +345,30 @@ class Atendente(BaseHTTPRequestHandler):
                 ok, aviso = _reiniciar_cerebro(com_visao=ligar)
             return self._json({"ok": ok, "visao": ligar and ok, "aviso": aviso})
 
+        if rota == "/api/revelar":
+            # Caminho de fora: a senha-mestra vale para ESTE segredo e nao
+            # deixa o cofre aberto depois. O valor nao passa pelo modelo nem
+            # entra na memoria -- sai daqui direto para a tela de quem pediu.
+            c = self._corpo()
+            servico = (c.get("servico") or "").strip()
+            senha = c.get("senha") or ""
+            if not servico or not senha:
+                return self._json({"erro": "informe servico e senha-mestra"}, 400)
+            valor = cofre.revelar_com_senha(servico, senha)
+            if valor is None:
+                return self._json({"ok": False,
+                                   "erro": "Senha-mestra incorreta, ou servico "
+                                           "nao encontrado."})
+            return self._json({"ok": True, "servico": servico, "valor": valor})
+
         if rota == "/api/destrancar":
+            # Nem com a senha certa: o cofre nao abre para quem chegou de
+            # fora. A senha-mestra nao deve sequer trafegar pelo tunel.
+            if self._de_fora():
+                return self._json({
+                    "ok": False,
+                    "erro": "O cofre so abre do proprio computador ou da rede "
+                            "local. Pelo link publico, nao."}, 403)
             senha = self._corpo().get("senha") or ""
             return self._json({"ok": bool(senha) and cofre.destrancar(senha)})
 

@@ -28,6 +28,7 @@ from __future__ import annotations
 import base64
 import os
 import secrets
+import time
 from datetime import datetime
 from typing import Any
 
@@ -56,8 +57,27 @@ CREATE TABLE IF NOT EXISTS cofre_config (
 # guardamos a chave derivada em memoria -- nunca a senha-mestra, nunca em disco.
 _chave: bytes | None = None
 
+# Cofre aberto e janela aberta. Depois deste tempo sem uso, tranca sozinho.
+MINUTOS_ATE_TRANCAR = 10
+_ultimo_uso: float = 0.0
+
 # Canal lateral: o que o dono deve ver na tela, e o modelo nao.
 _para_o_dono: list[str] = []
+
+# Qual servico foi pedido no ultimo turno. A interface precisa saber o que
+# perguntar quando o cofre estiver trancado e o pedido vier de fora.
+_servico_pedido: str = ""
+
+
+def marcar_servico_pedido(servico: str) -> None:
+    global _servico_pedido
+    _servico_pedido = servico.strip()
+
+
+def ultimo_servico_pedido() -> str:
+    global _servico_pedido
+    s, _servico_pedido = _servico_pedido, ""
+    return s
 
 
 def abrir():
@@ -102,6 +122,7 @@ def destrancar(senha_mestra: str) -> bool:
         con.execute("INSERT INTO cofre_config (chave, valor) VALUES ('prova', ?)",
                     (_cifrar("atlas"),))
         con.commit()
+        _tocar()
         return True
     _chave = chave
     try:
@@ -110,6 +131,7 @@ def destrancar(senha_mestra: str) -> bool:
     except Exception:
         _chave = None
         return False
+    _tocar()
     return True
 
 
@@ -119,7 +141,17 @@ def trancar() -> None:
 
 
 def destrancado() -> bool:
+    """Aberto? Trancar por inatividade acontece aqui, na pergunta."""
+    global _chave
+    if _chave is not None and _ultimo_uso:
+        if time.time() - _ultimo_uso > MINUTOS_ATE_TRANCAR * 60:
+            _chave = None
     return _chave is not None
+
+
+def _tocar() -> None:
+    global _ultimo_uso
+    _ultimo_uso = time.time()
 
 
 def existe() -> bool:
@@ -180,10 +212,31 @@ def _achar(servico: str):
 
 def revelar(servico: str) -> str | None:
     """Devolve o segredo em claro. SO o canal lateral deve chamar isto."""
+    if not destrancado():
+        return None
     linha = _achar(servico)
     if linha is None:
         return None
+    _tocar()
     return _decifrar(linha["segredo"])
+
+
+def revelar_com_senha(servico: str, senha_mestra: str) -> str | None:
+    """Revela UM segredo sem deixar o cofre aberto depois.
+
+    E o caminho de fora: a senha-mestra vale para esta revelacao e so. Se o
+    cofre ja estava aberto aqui dentro, continua como estava; se estava
+    fechado, volta a fechar ao terminar.
+    """
+    global _chave
+    estava = _chave
+    try:
+        if not destrancar(senha_mestra):
+            return None
+        linha = _achar(servico)
+        return _decifrar(linha["segredo"]) if linha else None
+    finally:
+        _chave = estava
 
 
 def remover(servico: str) -> bool:
