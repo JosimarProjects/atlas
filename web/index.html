@@ -78,6 +78,19 @@
   .chave input:checked + .trilho::after{transform:translateX(17px);background:#fff}
   .chave.ocupada{opacity:.45;pointer-events:none}
 
+  .motores{display:flex;gap:6px;padding:0 4px}
+  .motor{
+    flex:1;padding:8px 9px;border-radius:10px;border:1px solid var(--borda);
+    background:var(--painel2);cursor:pointer;transition:.15s;text-align:left
+  }
+  .motor b{display:block;font-size:12.5px;font-weight:600}
+  .motor span{display:block;font-size:10px;color:var(--tenue);line-height:1.35;margin-top:2px}
+  .motor:hover{border-color:var(--roxo)}
+  .motor.ativo{background:var(--roxo);border-color:var(--roxo)}
+  .motor.ativo span{color:rgba(255,255,255,.75)}
+  .motor.indisponivel{opacity:.4;pointer-events:none}
+  .motores.trocando{opacity:.5;pointer-events:none}
+
   .botao{
     width:100%;padding:9px;margin-top:6px;border:1px solid var(--borda);
     background:var(--painel2);color:var(--texto);border-radius:9px;
@@ -376,6 +389,18 @@
       <b id="vMemoria">—</b></div>
     <div class="linha"><span><i class="ponto off" id="pCofre"></i>Cofre</span>
       <b id="vCofre">—</b></div>
+  </div>
+
+  <div class="secao" id="secaoMotor">
+    <div class="rotulo">Cérebro</div>
+    <div class="motores">
+      <div class="motor ativo" id="motorLocal" onclick="trocarMotor('local')">
+        <b>Local</b><span>Qwen 9B · grátis · offline</span>
+      </div>
+      <div class="motor" id="motorClaude" onclick="trocarMotor('claude')">
+        <b>Claude</b><span>melhor · usa sua assinatura</span>
+      </div>
+    </div>
   </div>
 
   <div class="secao">
@@ -1009,6 +1034,9 @@ async function estado(){
     // um agendamento recem-criado aparecia como zero.
     if (typeof d.avisos === 'number')
       document.getElementById('nAvisos').textContent = d.avisos;
+    if (d.motor) pintarMotor(d.motor);
+    document.getElementById('motorClaude').classList.toggle(
+      'indisponivel', !d.claude_disponivel);
     const v = document.getElementById('visao');
     if (!v.dataset.mexendo) v.checked = !!d.visao;
   } catch (e) { marcar('pCerebro', false); }
@@ -1054,6 +1082,27 @@ async function esquecerFato(id, assunto){
 Isso não tem volta.`)) return;
   await api('/api/esquecer-fato', {method: 'POST', body: JSON.stringify({id})});
   fatos(); estado();
+}
+
+/* --------------------------------------------------------------- cerebro */
+async function trocarMotor(qual){
+  const caixa = document.querySelector('.motores');
+  caixa.classList.add('trocando');
+  try {
+    const d = await (await api('/api/motor', {
+      method: 'POST', body: JSON.stringify({motor: qual})})).json();
+    pintarMotor(d.motor);
+    if (qual === 'claude' && d.motor !== 'claude')
+      bolha('ela erro', 'O Claude Code não está disponível nesta máquina.');
+  } catch (e) {} finally {
+    caixa.classList.remove('trocando');
+    estado();
+  }
+}
+
+function pintarMotor(qual){
+  document.getElementById('motorLocal').classList.toggle('ativo', qual !== 'claude');
+  document.getElementById('motorClaude').classList.toggle('ativo', qual === 'claude');
 }
 
 /* ----------------------------------------------------------- modo visual */

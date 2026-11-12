@@ -36,6 +36,36 @@ O jeito ingênuo guarda a conversa inteira, palavra por palavra. O contexto cres
 Quando a Atlas diz que criou um lembrete, [uma linha entrou no SQLite](atlas/ferramentas.py). Ela não finge. São 8 ferramentas: lembretes (criar/listar/concluir), notas, hora, clima e relatório do dia.
 
 
+
+---
+
+## Dois cérebros, um interruptor
+
+Na lateral há dois cartões. Clicar troca na hora — vale da próxima resposta em diante, sem reiniciar nada.
+
+| | Local | Claude |
+|---|---|---|
+| Modelo | Qwen3.5-9B na sua GPU | Claude, pelo CLI já instalado |
+| Custo | zero | consome cota da assinatura |
+| Sem internet | funciona | não funciona |
+| Privacidade | nada sai da máquina | passa pela Anthropic |
+
+Medido na mesma pergunta — *"quem foi Dom Pedro II?"*:
+
+```
+LOCAL  (36 s)  "...reinando de 1841 a 1889."     ← 1841 está errado
+CLAUDE  (3 s)  "...governou de 1831 a 1889 e foi deposto
+                pela Proclamação da República."   ← correto
+```
+
+Doze vezes mais rápido e factualmente certo. É honesto dizer: **boa parte da engenharia deste projeto é andaime para compensar o modelo local** — a trava anti-alucinação, o roteador com gramática, a coerção de tipos, o detector de deriva de idioma. Com Claude, nada disso seria necessário.
+
+**O que não muda:** memória, ferramentas, cofre, agendamentos e interface não sabem qual cérebro está ligado. `cerebro._chamar()` é o único ponto que diverge — é por isso que a troca cabe num botão.
+
+**O padrão é o local**, e de propósito: é grátis, funciona offline, e nada sai da máquina. Ligue o Claude quando a qualidade importar mais que isso — e desligue antes de falar de senha, saúde ou qualquer coisa que você não queira na nuvem.
+
+> Se o Claude falhar, ela cai para o local em vez de não responder. Você fica sem a qualidade, não sem a assistente.
+
 ---
 
 ## Memória: ela lembra entre conversas

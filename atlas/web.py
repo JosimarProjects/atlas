@@ -366,6 +366,14 @@ class Atendente(BaseHTTPRequestHandler):
             self.wfile.write(wav)
             return None
 
+        if rota == "/api/motor":
+            # Troca de cerebro nao reinicia nada: vale da proxima resposta
+            # em diante, inclusive no meio de uma conversa.
+            qual = (self._corpo().get("motor") or "").strip()
+            novo = cerebro.trocar_motor(qual)
+            return self._json({"motor": novo,
+                               "ok": novo == qual or not qual})
+
         if rota == "/api/visao":
             # Ligar ou desligar a visao exige reiniciar o cerebro: o projetor
             # de imagem e carregado na subida do llama-server, e ocupa 918 MB
@@ -425,6 +433,14 @@ class Atendente(BaseHTTPRequestHandler):
 
     def _estado(self) -> dict[str, Any]:
         return _estado_atual()
+
+
+def _tem_claude() -> bool:
+    try:
+        from . import claude_cli
+        return claude_cli.disponivel()
+    except Exception:
+        return False
 
 
 def _visao_ligada() -> bool:
@@ -493,6 +509,8 @@ def _estado_atual() -> dict[str, Any]:
             "falas": falas,
             "lembretes": pendentes,
             "ferramentas": len(ferramentas.ESQUEMAS),
+            "motor": cerebro.motor_atual(),
+            "claude_disponivel": _tem_claude(),
             "avisos": len(agenda_propria.listar()),
             "dono": config.DONO,
         }

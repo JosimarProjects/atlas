@@ -29,6 +29,37 @@ from .memoria import Memoria
 
 MAX_VOLTAS_FERRAMENTA = 3
 
+# Qual cerebro esta ligado. Fica no banco para sobreviver ao reinicio, e e
+# lido a cada chamada: trocar no meio de uma conversa vale a partir da
+# proxima resposta, sem reiniciar nada.
+MOTOR_LOCAL = "local"
+MOTOR_CLAUDE = "claude"
+
+
+def motor_atual() -> str:
+    try:
+        from .memoria import conectar
+        l = conectar().execute(
+            "SELECT valor FROM estado WHERE chave = 'motor'").fetchone()
+        return l["valor"] if l else MOTOR_LOCAL
+    except Exception:
+        return MOTOR_LOCAL
+
+
+def trocar_motor(qual: str) -> str:
+    from .memoria import conectar
+    alvo = MOTOR_CLAUDE if qual == MOTOR_CLAUDE else MOTOR_LOCAL
+    if alvo == MOTOR_CLAUDE:
+        from . import claude_cli
+        if not claude_cli.disponivel():
+            return MOTOR_LOCAL
+    con = conectar()
+    con.execute("INSERT INTO estado (chave, valor) VALUES ('motor', ?) "
+                "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+                (alvo,))
+    con.commit()
+    return alvo
+
 # O Qwen3.5 raciocina dentro de <think>...</think>. Mantemos o raciocinio
 # ligado na resposta final (sem ele o modelo perde muita qualidade), mas o
 # bloco nunca pode vazar para a voz.
@@ -124,6 +155,19 @@ def _chamar(
             "type": "json_schema",
             "json_schema": {"name": "decisao", "strict": True, "schema": schema},
         }
+
+    # Unico ponto do sistema que sabe qual cerebro esta ligado. Memoria,
+    # ferramentas, cofre e interface seguem iguais nos dois -- e por isso que
+    # a troca cabe num interruptor.
+    if motor_atual() == MOTOR_CLAUDE:
+        from . import claude_cli
+        try:
+            return claude_cli.chamar(mensagens, schema)
+        except claude_cli.ClaudeIndisponivel as e:
+            # Cair para o local e melhor do que nao responder: o dono fica
+            # sem a qualidade, nao sem a assistente.
+            print(f"[atlas] Claude indisponivel ({e}); usando o local.")
+
     resposta = _post("/chat/completions", corpo)
     return resposta["choices"][0]["message"].get("content") or ""
 
