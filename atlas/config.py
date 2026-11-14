@@ -30,9 +30,14 @@ LLM_TOP_P = 0.95
 LLM_TOP_K = 20
 # O Qwen3.5 raciocina antes de responder, e esse raciocinio consome o mesmo
 # orcamento: uma pergunta de conhecimento gasta ~950 tokens so pensando.
-# Com 2000 ainda havia resposta vazia; 4000 da folga. Nao desligue o
-# pensamento: sem ele o modelo para de chamar ferramentas e passa a
-# "simular" o que faria.
+# Com 2000 ainda havia resposta vazia; 4000 da folga.
+#
+# Desligar o pensamento ja foi proibido aqui, e com razao: enquanto o
+# PROPRIO modelo escolhia a ferramenta, sem raciocinio ele parava de chamar
+# e passava a narrar o que faria. Depois que a escolha saiu para uma chamada
+# separada com gramatica, a resposta final passou a poder dispensar o
+# raciocinio sem efeito colateral -- dai a chave na interface. Vale para os
+# dois tamanhos (4B e 9B); e no 4B que a diferenca pesa mais.
 LLM_MAX_TOKENS = 4000
 
 # Servidor de embeddings (EmbeddingGemma 2), separado do cerebro. E ele que

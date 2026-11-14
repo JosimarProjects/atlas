@@ -401,7 +401,7 @@
     <div class="rotulo">Cérebro</div>
     <div class="motores">
       <div class="motor ativo" id="motorLocal" onclick="trocarMotor('local')">
-        <b>Local</b><span>Qwen 9B · grátis · offline</span>
+        <b>Local</b><span id="rotuloLocal">Qwen · grátis · offline</span>
       </div>
       <div class="motor" id="motorClaude" onclick="trocarMotor('claude')">
         <b>Claude</b><span>melhor · usa sua assinatura</span>
@@ -709,7 +709,7 @@ async function retomar(conversaId){
         if (passo.erro) bolha('ela erro', passo.erro);
         else {
           const el = bolha('ela', passo.resposta || '(sem resposta)', passo.reservado);
-          marcarMotor(el, passo.motor);
+          marcarMotor(el, passo.motor, passo.modelo);
           adicionarBotaoFalar(el, passo.resposta);
           if (passo.pedir_mestra) pedirMestra(passo.pedir_mestra);
           for (const p of (passo.pendentes || [])) cartaoPedido(p);
@@ -812,7 +812,7 @@ async function enviar(){
     if (d.erro) bolha('ela erro', d.erro);
     else {
       const el = bolha('ela', d.resposta || '(sem resposta)', d.reservado);
-      marcarMotor(el, d.motor);
+      marcarMotor(el, d.motor, d.modelo);
       adicionarBotaoFalar(el, d.resposta);
       if (document.getElementById('vozLigada').checked) falar(d.resposta);
       if (d.pedir_mestra) pedirMestra(d.pedir_mestra);
@@ -959,11 +959,14 @@ let gravador = null, pedacos = [];
 /* Quem respondeu, dito na propria mensagem. Sem isto nao da para saber se
    a troca pegou -- e pior: quando o Claude falha e cai para o local, a
    resposta parece do Claude e a conclusao vira "a chave nao funciona". */
-function marcarMotor(el, motor){
+function marcarMotor(el, motor, modelo){
   if (!motor) return;
   const s = document.createElement('span');
   s.className = 'selo-motor ' + (motor === 'claude' ? 'claude' : 'local');
-  s.textContent = motor === 'claude' ? 'Claude' : 'Local';
+  // No local vai junto o tamanho: um 4B e um 9B com pensamento curto
+  // respondem igualmente rapido, e so a qualidade separa os dois.
+  s.textContent = motor === 'claude' ? 'Claude'
+                : (modelo ? 'Local ' + modelo : 'Local');
   el.querySelector('.hora').appendChild(s);
 }
 
@@ -1062,6 +1065,9 @@ async function estado(){
     if (typeof d.avisos === 'number')
       document.getElementById('nAvisos').textContent = d.avisos;
     if (d.motor) pintarMotor(d.motor);
+    if (d.modelo_local)
+      document.getElementById('rotuloLocal').textContent =
+        'Qwen ' + d.modelo_local + ' · grátis · offline';
     const pens = document.getElementById('pensamento');
     if (!pens.dataset.mexendo) pens.checked = !!d.pensamento_longo;
     // So faz diferenca no local; com o Claude o controle fica apagado.

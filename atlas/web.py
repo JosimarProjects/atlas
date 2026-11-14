@@ -281,6 +281,7 @@ class Atendente(BaseHTTPRequestHandler):
                         "reservado": reservado, "de_dentro": de_dentro,
                         "servico_pedido": cofre.ultimo_servico_pedido(),
                         "motor": cerebro.ULTIMO_MOTOR,
+                        "modelo": cerebro.tamanho_local(),
                         "titulo": titulo,
                         "pendentes": confirmacao.listar(),
                         "quando": datetime.now().isoformat(timespec="seconds")})
@@ -526,6 +527,7 @@ def _estado_atual() -> dict[str, Any]:
             "lembretes": pendentes,
             "ferramentas": len(ferramentas.ESQUEMAS),
             "motor": cerebro.motor_atual(),
+            "modelo_local": cerebro.tamanho_local(),
             "pensamento_longo": cerebro.pensamento_longo(),
             "claude_disponivel": _tem_claude(),
             "avisos": len(agenda_propria.listar()),

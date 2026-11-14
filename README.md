@@ -77,6 +77,23 @@ Vinte e cinco vezes mais rápido, resposta praticamente igual. Vale ligar o pens
 
 **Cada resposta diz quem respondeu** — um selo `Claude` ou `Local` ao lado da hora. Sem isso não há como saber se a troca pegou, e pior: quando o Claude falha e ela cai para o local, a resposta parece do Claude e a conclusão vira *"a chave não funciona"*.
 
+### Dois tamanhos de cérebro local
+
+O mesmo Qwen3.5 vem em 9B e em 4B, e qual dos dois sobe é uma **flag na subida**, não um botão na tela — só cabe um na placa de 8 GB por vez, e trocar significa recarregar o modelo:
+
+```powershell
+.\scripts\ligar.ps1              # 9B  — 5,7 GB, mais capaz
+.\scripts\ligar.ps1 -Modelo 4b   # 4B  — 2,8 GB, responde rápido e sobra placa
+```
+
+A folga do 4B não é detalhe. Com 2,8 GB de modelo em vez de 6,2 GB, **a visão passa a caber junto** (`-ComVisao`) e o contexto pode dobrar — duas coisas que no 9B obrigavam a escolher. No 9B o projetor de imagem de 918 MB estourava os 8 GB e o llama.cpp, sem avisar, subia tudo na CPU a 5,7 tok/s.
+
+Nada mais muda entre os dois: mesmo template corrigido, mesmas 26 ferramentas, mesma memória, mesma chave de pensamento. A diferença aparece só na qualidade da resposta.
+
+> **O selo diz o tamanho:** `Local 4B` ou `Local 9B`, ao lado da hora. Com o pensamento curto os dois respondem em segundos e ficam indistinguíveis pela velocidade — se o selo não dissesse, não haveria como saber qual respondeu. O tamanho vem do próprio llama-server (`meta.n_params`), não do script de subida: se alguém subir o servidor na mão com outro modelo, o arquivo mentiria e a contagem não.
+
+**Combinação mais rápida que a Atlas tem rodando local:** 4B + pensamento desligado.
+
 **O roteador é sempre local**, mesmo com o Claude ligado. Escolher ferramenta é decisão mecânica que o Qwen resolve em 1 s com a gramática BNF garantindo a forma — mandar isso para o modelo caro seria desperdício de tempo e de cota. O Claude entra onde a qualidade da resposta importa.
 
 **O que não muda:** memória, ferramentas, cofre, agendamentos e interface não sabem qual cérebro está ligado. `cerebro._chamar()` é o único ponto que diverge — é por isso que a troca cabe num botão.
@@ -399,8 +416,9 @@ engine/llama/llama-server.exe --list-devices
 ### 2. O modelo e a voz
 
 ```bash
-bash scripts/baixa-modelo.sh    # Qwen3.5-9B Q4_K_M — 5,6 GB
-bash scripts/baixa-voz.sh       # Piper pt_BR — 63 MB
+bash scripts/baixa-modelo.sh       # Qwen3.5-9B Q4_K_M — 5,7 GB
+bash scripts/baixa-modelo.sh 4b   # (opcional) o 4B — 2,8 GB, mais rápido
+bash scripts/baixa-voz.sh         # Piper pt_BR — 63 MB
 ```
 
 O download do modelo usa `aria2` em 16 conexões e **retoma de onde parou** se cair.
@@ -409,6 +427,7 @@ O download do modelo usa `aria2` em 16 conexões e **retoma de onde parou** se c
 
 ```powershell
 .\scripts\ligar.ps1              # sobe cérebro + memória, na ordem certa
+.\scripts\ligar.ps1 -Modelo 4b   # idem, com o cérebro pequeno e rápido
 python -m atlas.main --texto      # teclado
 python -m atlas.main              # voz
 python -m atlas.main --diga "que horas são?"
@@ -495,7 +514,7 @@ atlas/
 │   └── main.py          # loop ouve → pensa → fala
 └── scripts/
     ├── servidor.ps1          # sobe o llama-server na GPU certa
-    ├── baixa-modelo.sh       # Qwen3.5-9B, 16 conexões, retomável
+    ├── baixa-modelo.sh       # Qwen3.5 9B ou 4B, 16 conexões, retomável
     ├── baixa-voz.sh          # voz PT-BR do Piper
     ├── autoteste.py          # sete checagens, em banco descartavel
     └── instala-servico.ps1   # Agendador do Windows

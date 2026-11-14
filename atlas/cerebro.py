@@ -42,6 +42,47 @@ MOTOR_CLAUDE = "claude"
 # dele e conclui que a troca nao funcionou.
 ULTIMO_MOTOR = MOTOR_LOCAL
 
+# Qual Qwen esta carregado AGORA (4B ou 9B). Nao e escolha de interface: o
+# modelo e decidido quando o llama-server sobe, porque so cabe um na placa de
+# 8 GB por vez. Mas o dono precisa VER qual subiu -- um 4B respondendo rapido
+# e um 9B respondendo rapido sao indistinguiveis pela velocidade quando o
+# pensamento esta curto, e a diferenca aparece so na qualidade.
+_TAMANHO_CACHE: str | None = None
+
+
+def tamanho_local(recarregar: bool = False) -> str:
+    """"4B" / "9B" / "" se o cerebro local nao estiver no ar.
+
+    Pergunta ao proprio llama-server quantos parametros ele carregou, em vez
+    de confiar no arquivo que o script de subida escreve: se alguem subir o
+    servidor na mao com outro modelo, o arquivo mente e a contagem nao.
+    """
+    global _TAMANHO_CACHE
+    if _TAMANHO_CACHE is not None and not recarregar:
+        return _TAMANHO_CACHE
+    try:
+        with urllib.request.urlopen(f"{config.LLM_URL}/models", timeout=5) as r:
+            dados = json.loads(r.read().decode("utf-8"))
+        n = (dados.get("data") or [{}])[0].get("meta", {}).get("n_params", 0)
+        if n:
+            _TAMANHO_CACHE = f"{round(n / 1e9)}B"
+            return _TAMANHO_CACHE
+    except Exception:
+        pass
+    # Builds antigos do llama.cpp nao mandam meta; cai para o que o script
+    # de subida anotou.
+    try:
+        _TAMANHO_CACHE = (config.LOGS / "modelo.txt").read_text().strip().upper()
+    except Exception:
+        _TAMANHO_CACHE = ""
+    return _TAMANHO_CACHE
+
+
+def esquecer_tamanho() -> None:
+    """Chamado quando o cerebro cai: o proximo a subir pode ser outro."""
+    global _TAMANHO_CACHE
+    _TAMANHO_CACHE = None
+
 
 def motor_atual() -> str:
     try:
@@ -163,6 +204,9 @@ def no_ar() -> bool:
         with urllib.request.urlopen(f"{config.LLM_URL}/models", timeout=5):
             return True
     except Exception:
+        # Caiu: o proximo que subir pode ser o outro tamanho, entao a
+        # resposta guardada sobre qual modelo esta carregado nao vale mais.
+        esquecer_tamanho()
         return False
 
 

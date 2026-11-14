@@ -16,13 +16,20 @@ param(
     [int]$Ctx = 8192,
     [int]$Gpu = 999,         # todas as camadas na GPU
     [switch]$Rocm,           # usa o build ROCm (nao enumera a placa neste driver)
-    [switch]$ComVisao        # carrega o projetor de imagem (+918 MB de VRAM)
+    [switch]$ComVisao,       # carrega o projetor de imagem
+    # Qual cerebro local subir. O 9B responde melhor; o 4B responde rapido e
+    # deixa a placa com folga -- com ele a visao cabe junto e o contexto pode
+    # dobrar. Os dois sao Qwen3.5, entao o template corrigido, as ferramentas
+    # e a chave de pensamento valem para os dois sem mudar nada.
+    [ValidateSet("9b", "4b")]
+    [string]$Modelo = "9b"
 )
 
 $ErrorActionPreference = "Stop"
 $root  = Split-Path -Parent $PSScriptRoot
-$model = Join-Path $root "models\Qwen_Qwen3.5-9B-Q4_K_M.gguf"
-$visao = Join-Path $root "models\mmproj-Qwen_Qwen3.5-9B-f16.gguf"
+$rotulo = $Modelo.ToUpper()
+$model = Join-Path $root "models\Qwen_Qwen3.5-$rotulo-Q4_K_M.gguf"
+$visao = Join-Path $root "models\mmproj-Qwen_Qwen3.5-$rotulo-f16.gguf"
 
 # --- escolhe o backend -------------------------------------------------
 # Vulkan e o padrao e funciona. Cheguei a acusar o Vulkan de corromper a
@@ -43,7 +50,9 @@ if ($Rocm -and $rocmExe) {
 }
 
 if (-not (Test-Path $server)) { throw "llama-server nao encontrado em $server" }
-if (-not (Test-Path $model))  { throw "modelo nao encontrado em $model" }
+if (-not (Test-Path $model)) {
+    throw "modelo $rotulo nao encontrado em $model`nBaixe com: bash scripts/baixa-modelo.sh $Modelo"
+}
 
 $args = @(
     "--model", $model
@@ -58,12 +67,19 @@ $args = @(
     "--metrics"
 )
 
-# Visao DESLIGADA por padrao. O mmproj ocupa 918 MB de VRAM, e com ele o
-# Qwen de 6,2 GB mais o cache nao cabem nos 8 GB: o llama.cpp desiste do
-# offload e sobe tudo na CPU, a 5,7 tok/s em vez de 43,5. Ler imagem e raro;
-# responder rapido e o tempo todo. Para analisar uma imagem, suba uma
-# segunda instancia com -ComVisao noutra porta.
-if ($ComVisao -and (Test-Path $visao) -and ((Get-Item $visao).Length -gt 800MB)) {
+# Visao DESLIGADA por padrao no 9B. O mmproj dele ocupa 918 MB de VRAM, e
+# com ele o Qwen de 6,2 GB mais o cache nao cabem nos 8 GB: o llama.cpp
+# desiste do offload e sobe tudo na CPU, a 5,7 tok/s em vez de 43,5. Ler
+# imagem e raro; responder rapido e o tempo todo.
+#
+# No 4B a conta muda: 2,8 GB de modelo + 640 MB de projetor deixam a placa
+# com folga, entao -ComVisao cabe junto sem derrubar nada para a CPU.
+#
+# O corte de tamanho e proporcional ao proprio arquivo esperado, nao um
+# numero fixo: o de 800 MB era do 9B e rejeitaria calado o projetor do 4B,
+# que e menor de fabrica. So serve para pegar download pela metade.
+$minProj = if ($rotulo -eq "4B") { 500MB } else { 800MB }
+if ($ComVisao -and (Test-Path $visao) -and ((Get-Item $visao).Length -gt $minProj)) {
     $args += @("--mmproj", $visao)
     $temVisao = "sim"
 } else {
@@ -79,9 +95,18 @@ $saida = & $server --list-devices 2>&1 | Out-String
 if ($saida -match '(\d+)\s*MiB free') { $livre = [int]$matches[1] }
 
 $precisa = [math]::Round(((Get-Item $model).Length / 1MB) + ($Ctx / 1024.0 * 40) + 600)
-if ($temVisao -eq "sim") { $precisa += 950 }
+if ($temVisao -eq "sim") {
+    $precisa += [math]::Round((Get-Item $visao).Length / 1MB) + 60
+}
 
-Write-Output "backend: $backend | visao: $temVisao | contexto: $Ctx"
+# Quem esta no ar fica registrado em disco: a interface le daqui para mostrar
+# "Local 4B" ou "Local 9B" no selo da resposta. Sem isso o dono troca de
+# modelo e nao tem como saber qual respondeu -- foi exatamente o que
+# aconteceu na troca entre Local e Claude.
+$rotuloArq = Join-Path $root "logs\modelo.txt"
+Set-Content -Path $rotuloArq -Value $rotulo -Encoding ascii
+
+Write-Output "modelo: Qwen3.5-$rotulo | backend: $backend | visao: $temVisao | contexto: $Ctx"
 Write-Output "VRAM: $livre MB livres, precisa de ~$precisa MB"
 
 if ($livre -lt $precisa) {

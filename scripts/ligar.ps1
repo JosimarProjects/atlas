@@ -6,14 +6,20 @@
 # PRIMEIRO, enquanto a placa esta mais vazia, e a memoria depois -- na CPU,
 # onde nao disputa nada.
 #
-#   .\scripts\ligar.ps1            # cerebro + memoria
-#   .\scripts\ligar.ps1 -ComVisao  # tambem le imagens (+950 MB de VRAM)
-#   .\scripts\ligar.ps1 -Parar     # desliga tudo
+#   .\scripts\ligar.ps1               # cerebro 9B + memoria
+#   .\scripts\ligar.ps1 -Modelo 4b    # cerebro 4B: responde rapido, sobra placa
+#   .\scripts\ligar.ps1 -ComVisao     # tambem le imagens
+#   .\scripts\ligar.ps1 -Parar        # desliga tudo
+#
+# O 4B combina com a chave "Pensar antes de responder" DESLIGADA na
+# interface: e a configuracao mais rapida que a Atlas tem rodando local.
 
 param(
     [switch]$ComVisao,
     [switch]$Parar,
-    [int]$Ctx = 8192
+    [int]$Ctx = 8192,
+    [ValidateSet("9b", "4b")]
+    [string]$Modelo = "9b"
 )
 
 $ErrorActionPreference = "Continue"
@@ -34,7 +40,8 @@ Start-Sleep -Seconds 2
 if ($Parar) { Write-Output "Atlas desligada."; return }
 
 # --- 1. cerebro, na GPU ------------------------------------------------
-$argsCerebro = @("-NoProfile", "-File", "$root\scripts\servidor.ps1", "-Ctx", $Ctx)
+$argsCerebro = @("-NoProfile", "-File", "$root\scripts\servidor.ps1",
+                 "-Ctx", $Ctx, "-Modelo", $Modelo)
 if ($ComVisao) { $argsCerebro += "-ComVisao" }
 Start-Process powershell -ArgumentList $argsCerebro `
     -RedirectStandardOutput "$root\logs\servidor.log" `
@@ -64,7 +71,7 @@ $naCpu = $log -match "failed to fit"
 
 Write-Output ""
 Write-Output "Atlas no ar."
-Write-Output "  cerebro : http://127.0.0.1:8080"
+Write-Output "  cerebro : http://127.0.0.1:8080  (Qwen3.5-$($Modelo.ToUpper()))"
 Write-Output "  memoria : http://127.0.0.1:8083  (CPU)"
 if ($naCpu) {
     Write-Warning "O cerebro NAO coube na placa e subiu na CPU -- ~7x mais devagar."
