@@ -94,6 +94,8 @@ Nada mais muda entre os dois: mesmo template corrigido, mesmas 26 ferramentas, m
 
 **Combinação mais rápida que a Atlas tem rodando local:** 4B + pensamento desligado.
 
+**O contexto se ajusta sozinho ao tamanho.** 9B → 8k; 4B → 64k. Não é capricho: o mesmo `llama-server` atende também o OpenClaw instalado nesta máquina, e o prompt de abertura dele (instruções do workspace + esquemas de ~70 plugins + memória) **não cabe em 16k por slot** — respondia *"context overflow"* antes da primeira palavra. Com `--parallel 2`, 64k viram 32k por conversa, e aí cabe. Passar `-Ctx` explicitamente continua mandando mais que a escolha automática.
+
 **O roteador é sempre local**, mesmo com o Claude ligado. Escolher ferramenta é decisão mecânica que o Qwen resolve em 1 s com a gramática BNF garantindo a forma — mandar isso para o modelo caro seria desperdício de tempo e de cota. O Claude entra onde a qualidade da resposta importa.
 
 **O que não muda:** memória, ferramentas, cofre, agendamentos e interface não sabem qual cérebro está ligado. `cerebro._chamar()` é o único ponto que diverge — é por isso que a troca cabe num botão.

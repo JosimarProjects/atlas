@@ -17,7 +17,7 @@
 param(
     [switch]$ComVisao,
     [switch]$Parar,
-    [int]$Ctx = 8192,
+    [int]$Ctx = 0,          # 0 = o servidor escolhe pelo tamanho do modelo
     [ValidateSet("9b", "4b")]
     [string]$Modelo = "9b"
 )
@@ -41,7 +41,8 @@ if ($Parar) { Write-Output "Atlas desligada."; return }
 
 # --- 1. cerebro, na GPU ------------------------------------------------
 $argsCerebro = @("-NoProfile", "-File", "$root\scripts\servidor.ps1",
-                 "-Ctx", $Ctx, "-Modelo", $Modelo)
+                 "-Modelo", $Modelo)
+if ($Ctx -gt 0) { $argsCerebro += @("-Ctx", $Ctx) }
 if ($ComVisao) { $argsCerebro += "-ComVisao" }
 Start-Process powershell -ArgumentList $argsCerebro `
     -RedirectStandardOutput "$root\logs\servidor.log" `

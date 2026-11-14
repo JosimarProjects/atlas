@@ -13,7 +13,8 @@ param(
     # nos 8 GB e o llama.cpp abortava o offload -- subia tudo na CPU, a 5,9
     # tok/s em vez de 43. E 8k basta: quem carrega o historico longo agora e
     # a memoria de longo prazo, que busca e injeta so o que importa.
-    [int]$Ctx = 8192,
+    # 0 = escolhe sozinho pelo tamanho do modelo (veja abaixo).
+    [int]$Ctx = 0,
     [int]$Gpu = 999,         # todas as camadas na GPU
     [switch]$Rocm,           # usa o build ROCm (nao enumera a placa neste driver)
     [switch]$ComVisao,       # carrega o projetor de imagem
@@ -28,6 +29,16 @@ param(
 $ErrorActionPreference = "Stop"
 $root  = Split-Path -Parent $PSScriptRoot
 $rotulo = $Modelo.ToUpper()
+
+# Contexto por tamanho de modelo. O 9B fica em 8k porque e o que sobra na
+# placa depois dos 6,2 GB de pesos. O 4B ocupa 2,8 GB e permite 64k -- que
+# nao e luxo: o OpenClaw, apontado para este mesmo servidor, monta um prompt
+# de abertura (instrucoes do workspace + esquemas de ~70 plugins + memoria)
+# que NAO cabe em 16k por slot. Com 8k ele respondia "context overflow"
+# antes de chegar na primeira palavra.
+if ($Ctx -eq 0) {
+    $Ctx = if ($rotulo -eq "4B") { 65536 } else { 8192 }
+}
 $model = Join-Path $root "models\Qwen_Qwen3.5-$rotulo-Q4_K_M.gguf"
 $visao = Join-Path $root "models\mmproj-Qwen_Qwen3.5-$rotulo-f16.gguf"
 
