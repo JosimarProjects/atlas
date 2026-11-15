@@ -1,0 +1,168 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cofre — Atlas</title>
+<style>
+  :root{
+    --fundo:#0b0d12; --painel:#11141c; --painel2:#161a24; --borda:#232838;
+    --texto:#e8eaf0; --fraco:#8b93a7; --tenue:#5a6176;
+    --roxo:#7c5cff; --roxo2:#9b84ff; --verde:#34d399; --vermelho:#f87171;
+    --raio:14px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --fundo:#f6f7fb; --painel:#ffffff; --painel2:#f0f2f8; --borda:#e1e5ef;
+      --texto:#141722; --fraco:#5b6478; --tenue:#8990a3;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100dvh; display:flex; align-items:center;
+    justify-content:center; padding:20px;
+    background:var(--fundo); color:var(--texto);
+    font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  .cartao{
+    width:100%; max-width:420px; background:var(--painel);
+    border:1px solid var(--borda); border-radius:var(--raio); padding:22px;
+  }
+  h1{font-size:17px; margin:0 0 2px}
+  .servico{
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:14px; color:var(--roxo2); word-break:break-all;
+  }
+  .dica{font-size:12.5px; color:var(--fraco); margin:14px 0 18px}
+  label{display:block; font-size:12.5px; color:var(--fraco); margin-bottom:6px}
+  .campo{display:flex; gap:8px}
+  input{
+    flex:1; min-width:0; padding:11px 12px; border-radius:10px;
+    border:1px solid var(--borda); background:var(--painel2);
+    color:var(--texto); font-size:15px;
+  }
+  input:focus{outline:none; border-color:var(--roxo)}
+  button{
+    padding:11px 16px; border-radius:10px; border:1px solid var(--roxo);
+    background:var(--roxo); color:#fff; font-size:14px; font-weight:600;
+    cursor:pointer;
+  }
+  button:disabled{opacity:.5; cursor:default}
+  button.fantasma{background:transparent; color:var(--fraco); border-color:var(--borda)}
+  .aviso{font-size:13px; margin-top:14px; display:none}
+  .aviso.erro{color:var(--vermelho); display:block}
+  /* O valor revelado. Fica em monoespaçada porque senha tem caractere que
+     se confunde em fonte proporcional: l/I/1, O/0. */
+  .revelado{display:none; margin-top:18px}
+  .revelado.on{display:block}
+  .valor{
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:17px; padding:13px; border-radius:10px; user-select:all;
+    background:var(--painel2); border:1px solid var(--verde);
+    word-break:break-all;
+  }
+  .linha{display:flex; gap:8px; align-items:center; margin-top:10px}
+  .conta{font-size:12px; color:var(--tenue); margin-left:auto}
+</style>
+
+<div class="cartao">
+  <h1>Cofre da Atlas</h1>
+  <div class="servico" id="servico">—</div>
+
+  <div class="dica">
+    A senha-mestra vale só para esta consulta. O cofre não fica destrancado
+    depois, e o valor não passa pelo modelo nem entra na memória.
+  </div>
+
+  <form id="forma">
+    <label for="mestra">Senha-mestra</label>
+    <div class="campo">
+      <input id="mestra" type="password" autocomplete="current-password"
+             autofocus placeholder="••••••••">
+      <button id="botao" type="submit">Ver</button>
+    </div>
+  </form>
+
+  <div class="aviso" id="aviso"></div>
+
+  <div class="revelado" id="revelado">
+    <label>Senha</label>
+    <div class="valor" id="valor"></div>
+    <div class="linha">
+      <button class="fantasma" type="button" id="copiar">Copiar</button>
+      <button class="fantasma" type="button" id="esconder">Esconder</button>
+      <span class="conta" id="conta"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const q = new URLSearchParams(location.search);
+// Aceita ?servico= e ?s= -- o link vem de canais diferentes e nem todos
+// preservam nome longo de parâmetro.
+const SERVICO = (q.get('servico') || q.get('s') || '').trim();
+document.getElementById('servico').textContent = SERVICO || '(nenhum serviço no link)';
+
+const aviso = document.getElementById('aviso');
+const revelado = document.getElementById('revelado');
+const campoValor = document.getElementById('valor');
+const conta = document.getElementById('conta');
+let timer = null, restante = 0;
+
+function erro(txt){ aviso.textContent = txt; aviso.className = 'aviso erro'; }
+function limparErro(){ aviso.className = 'aviso'; }
+
+function esconder(){
+  // Tira da tela E do DOM: deixar o nó com o texto significa que qualquer
+  // captura de tela ou inspeção posterior ainda acha o valor.
+  campoValor.textContent = '';
+  revelado.className = 'revelado';
+  if (timer) { clearInterval(timer); timer = null; }
+  conta.textContent = '';
+}
+
+document.getElementById('forma').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  limparErro();
+  const senha = document.getElementById('mestra').value;
+  if (!SERVICO) return erro('O link não trouxe o nome do serviço.');
+  if (!senha) return erro('Digite a senha-mestra.');
+
+  const botao = document.getElementById('botao');
+  botao.disabled = true; botao.textContent = '...';
+  try {
+    const r = await fetch('/api/revelar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({servico: SERVICO, senha})
+    });
+    const d = await r.json();
+    if (!d.ok) return erro(d.erro || 'Não foi possível revelar.');
+
+    // A senha-mestra sai da memória da página assim que serviu.
+    document.getElementById('mestra').value = '';
+    campoValor.textContent = d.valor;
+    revelado.className = 'revelado on';
+
+    // Some sozinho. Quem abre isso no celular costuma deixar a tela ligada.
+    restante = 45;
+    conta.textContent = `some em ${restante}s`;
+    timer = setInterval(() => {
+      restante -= 1;
+      if (restante <= 0) return esconder();
+      conta.textContent = `some em ${restante}s`;
+    }, 1000);
+  } catch (e) {
+    erro('A Atlas não respondeu. Ela está ligada?');
+  } finally {
+    botao.disabled = false; botao.textContent = 'Ver';
+  }
+});
+
+document.getElementById('copiar').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(campoValor.textContent); }
+  catch (e) { return erro('O navegador não deixou copiar; selecione à mão.'); }
+  const b = document.getElementById('copiar');
+  b.textContent = 'copiado'; setTimeout(() => b.textContent = 'Copiar', 1500);
+});
+
+document.getElementById('esconder').addEventListener('click', esconder);
+</script>
